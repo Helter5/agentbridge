@@ -156,4 +156,84 @@ describe('CLI Integration Tests', () => {
       expect(fs.existsSync(base)).toBe(false);
     }
   });
+
+  it('link-skills reports a clear error and exits 1 instead of "Something went wrong" + exit 0 when an agent\'s skillsDir is unreadable', async () => {
+    // Found via manual testing: link-skills was the only one of the 5
+    // mutating commands (status/doctor/unlink/pick/sync-mcp/sync-rules/
+    // add-skill all already had this) with no try/catch around its core
+    // call. A real fs error (here: skillsDir exists as a plain FILE, not
+    // a directory - fsp.readdir() on it throws ENOTDIR) escaped uncaught,
+    // past @clack/prompts' own uncaughtExceptionMonitor (which prints a
+    // generic "Something went wrong" purely to clean up the spinner
+    // display) with no process.exitCode ever set - exit 0 despite a
+    // completely failed operation and zero specifics about why.
+    const fakeHome = path.join(os.tmpdir(), `agentbridge-cli-linkskills-enotdir-${Date.now()}`);
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+      APPDATA: path.join(fakeHome, 'AppData', 'Roaming'),
+    };
+
+    try {
+      fs.mkdirSync(path.join(fakeHome, '.claude'), { recursive: true });
+      // skillsDir exists as a plain file where a directory is expected.
+      fs.writeFileSync(path.join(fakeHome, '.claude', 'skills'), 'not a directory', 'utf-8');
+
+      await execFileAsync('node', [cliPath, 'link-skills', '--yes'], { env });
+      throw new Error('expected link-skills to exit non-zero');
+    } catch (err: any) {
+      expect(err.code).toBe(1);
+      const output = (err.stdout || '') + (err.stderr || '');
+      expect(output).not.toContain('Something went wrong');
+      expect(output).toMatch(/ENOTDIR|not a directory/i);
+    } finally {
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  it('doctor without --fix exits 1 when it finds issues (even warning-level ones like a broken link), and 0 after --fix resolves them', async () => {
+    // Found via manual testing: the text already said "⚠ Found issues
+    // requiring attention" truthfully, but process.exitCode was never
+    // set - a script relying on the exit code (`agentbridge doctor &&
+    // deploy`) would proceed past real problems. Broken links, exposed
+    // secrets, and skill-name collisions are all reported at `warning`
+    // severity (not `errors`) in doctor's own report, so checking
+    // `errors` alone (a first-pass fix) would have missed the exact
+    // broken-link case this test exercises - checking warnings too was
+    // needed.
+    const fakeHome = path.join(os.tmpdir(), `agentbridge-cli-doctor-exit-${Date.now()}`);
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+      APPDATA: path.join(fakeHome, 'AppData', 'Roaming'),
+    };
+
+    try {
+      // A skills dir that's a real symlink/junction, but points at a
+      // target that doesn't exist - doctor's "Broken Link" warning.
+      const claudeDir = path.join(fakeHome, '.claude');
+      fs.mkdirSync(claudeDir, { recursive: true });
+      const brokenTarget = path.join(fakeHome, 'nonexistent-target');
+      fs.mkdirSync(brokenTarget, { recursive: true });
+      fs.symlinkSync(brokenTarget, path.join(claudeDir, 'skills'), 'junction');
+      fs.rmSync(brokenTarget, { recursive: true, force: true });
+
+      try {
+        await execFileAsync('node', [cliPath, 'doctor'], { env });
+        throw new Error('expected doctor to exit non-zero without --fix');
+      } catch (err: any) {
+        expect(err.code).toBe(1);
+        const output = (err.stdout || '') + (err.stderr || '');
+        expect(output).toContain('Broken Link');
+      }
+
+      // --fix resolves it - exit code goes back to 0.
+      const { stdout: fixOut } = await execFileAsync('node', [cliPath, 'doctor', '--fix'], { env });
+      expect(fixOut).toContain('Fixed');
+    } finally {
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
 });
