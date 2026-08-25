@@ -107,6 +107,27 @@ describe('Rollback & Snapshot Engine', () => {
     }
   }, 6000);
 
+  it('restoreBackupSnapshot() returns a specific error (not a crash, not a bare false) for a nonexistent snapshot ID', async () => {
+    const result = await restoreBackupSnapshot('does-not-exist-anywhere');
+    expect(result.success).toBe(false);
+    expect(result.restoredFiles).toEqual([]);
+    expect(result.failedFiles).toEqual([]);
+    expect(result.error).toContain('Snapshot not found: does-not-exist-anywhere');
+  });
+
+  it('restoreBackupSnapshot() returns a specific error for a snapshot file that exists but has invalid JSON', async () => {
+    const backupsDir = getBackupsDirectory();
+    await ensureDir(backupsDir);
+    const corruptFile = path.join(backupsDir, 'snapshot-corrupt.json');
+    // Same shape of corruption as the sync-mcp/pick bugs: a trailing comma.
+    await fsp.writeFile(corruptFile, '{"id":"snapshot-corrupt","files":{},}', 'utf-8');
+
+    const result = await restoreBackupSnapshot('snapshot-corrupt');
+    expect(result.success).toBe(false);
+    expect(result.restoredFiles).toEqual([]);
+    expect(result.error).toContain('Invalid snapshot file');
+  });
+
   it('getBackupsDirectory() honors AGENTBRIDGE_BACKUPS_DIR, falling back to the real default when unset', async () => {
     // beforeEach already set an override for this file's other tests -
     // unset it here specifically to check the real-default fallback path.
