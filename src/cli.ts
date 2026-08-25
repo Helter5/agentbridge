@@ -315,7 +315,26 @@ program
       });
     } catch (err: any) {
       s.stop('Skills synchronization failed.');
-      p.outro(pc.red(`✖ ${err.message || String(err)}`));
+      p.log.error(err.message || String(err));
+      // mergeSkillsIntoHub() attaches this when it threw partway through a
+      // multi-agent loop - without it, a failure on e.g. the 2nd of 4
+      // agents looked identical to a total failure, with no indication
+      // that an earlier agent's skills may have already been merged into
+      // the hub (a real, partial disk mutation) while later agents were
+      // never even reached.
+      const partial = err.agentbridgePartialMergeContext;
+      if (partial) {
+        if (partial.succeededAgentNames.length > 0) {
+          p.log.warn(
+            `Already processed before the failure: ${partial.succeededAgentNames.join(', ')} (their skills may already be merged into the hub).`
+          );
+        }
+        p.log.warn(
+          `Failed on: ${pc.bold(partial.failedAgentName)}. Remaining agents were never reached.`
+        );
+        p.log.info(`Run ${pc.cyan('agentbridge doctor')} to check the current state before retrying.`);
+      }
+      p.outro(pc.red('✖ Skills synchronization failed - see above.'));
       process.exitCode = 1;
       return;
     }

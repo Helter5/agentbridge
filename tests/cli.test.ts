@@ -192,6 +192,55 @@ describe('CLI Integration Tests', () => {
     }
   });
 
+  it('link-skills reports which agent failed and which were already processed when it fails partway through multiple agents', async () => {
+    // Follow-up to the ENOTDIR test above: that test only has 1 agent, so
+    // it can't tell "the failing agent" apart from "the whole operation".
+    // With 3 detected agents (Google Antigravity, Claude Code, OpenAI
+    // Codex - Claude Code deliberately broken as the 2nd one processed),
+    // the terminal output must name which agent actually failed and which
+    // agent completed before it - not just repeat the bare exception.
+    const fakeHome = path.join(os.tmpdir(), `agentbridge-cli-linkskills-partial-${Date.now()}`);
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+      APPDATA: path.join(fakeHome, 'AppData', 'Roaming'),
+    };
+
+    try {
+      // Google Antigravity - valid, processed 1st, should succeed.
+      fs.mkdirSync(path.join(fakeHome, '.gemini', 'config', 'skills', 'gemini-skill'), {
+        recursive: true,
+      });
+      fs.writeFileSync(
+        path.join(fakeHome, '.gemini', 'config', 'skills', 'gemini-skill', 'SKILL.md'),
+        '---\nname: gemini-skill\ndescription: d\n---\n',
+        'utf-8'
+      );
+      // Claude Code - broken, processed 2nd, causes the failure.
+      fs.mkdirSync(path.join(fakeHome, '.claude'), { recursive: true });
+      fs.writeFileSync(path.join(fakeHome, '.claude', 'skills'), 'not a directory', 'utf-8');
+      // OpenAI Codex - valid, but never reached (processed 3rd).
+      fs.mkdirSync(path.join(fakeHome, '.codex', 'skills', 'codex-skill'), { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeHome, '.codex', 'skills', 'codex-skill', 'SKILL.md'),
+        '---\nname: codex-skill\ndescription: d\n---\n',
+        'utf-8'
+      );
+
+      await execFileAsync('node', [cliPath, 'link-skills', '--yes'], { env });
+      throw new Error('expected link-skills to exit non-zero');
+    } catch (err: any) {
+      expect(err.code).toBe(1);
+      const output = (err.stdout || '') + (err.stderr || '');
+      expect(output).toContain('Google Antigravity');
+      expect(output).toContain('Claude Code');
+      expect(output).toMatch(/doctor/i);
+    } finally {
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
   it('doctor without --fix exits 1 when it finds issues (even warning-level ones like a broken link), and 0 after --fix resolves them', async () => {
     // Found via manual testing: the text already said "⚠ Found issues
     // requiring attention" truthfully, but process.exitCode was never

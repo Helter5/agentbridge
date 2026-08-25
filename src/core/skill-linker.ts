@@ -161,6 +161,20 @@ export async function listSkillsInDirectory(dirPath: string): Promise<SkillManif
 /**
  * Merges skill directories from multiple agent paths into the central hub
  */
+/**
+ * Extra context attached to an Error thrown mid-loop out of
+ * mergeSkillsIntoHub() - which agent's turn it was when something threw,
+ * and which agents before it in iteration order were already fully
+ * handled (imported, already-linked, or a harmless no-op). Lets a caller
+ * report partial completion instead of just the bare underlying error.
+ */
+export interface PartialMergeError extends Error {
+  agentbridgePartialMergeContext?: {
+    failedAgentName: string;
+    succeededAgentNames: string[];
+  };
+}
+
 export interface MergeSkillsResult {
   importedSkills: string[];
   /**
@@ -197,10 +211,21 @@ export async function mergeSkillsIntoHub(
   // this single call - best-effort provenance for a collision message, not
   // persisted across separate agentbridge invocations.
   const skillOwner: Record<string, string> = {};
+  // Tracks which agents this loop has already fully handled (including a
+  // no-op case - nothing to merge, already linked, or a harmlessly-broken
+  // link) - if an agent later in the list throws, this is attached to the
+  // error so the caller can report which agents were already done versus
+  // never reached, instead of just the bare exception (see PR #20's
+  // link-skills try/catch fix and the follow-up finding that it didn't
+  // surface this partial-completion context).
+  const processedAgentNames: string[] = [];
 
   for (const agent of agents) {
     const skillsDir = expandHome(agent.paths.skillsDir);
-    if (!(await pathExists(skillsDir))) continue;
+    if (!(await pathExists(skillsDir))) {
+      processedAgentNames.push(agent.name);
+      continue;
+    }
 
     // Skip if it's already a symlink/junction pointing to hub
     const isLink = await isSymlinkOrJunction(skillsDir);
@@ -209,6 +234,7 @@ export async function mergeSkillsIntoHub(
       // readlink() can return a path relative to the link's own directory;
       // resolve against that directory, not cwd.
       if (target && path.resolve(path.dirname(skillsDir), target) === absHub) {
+        processedAgentNames.push(agent.name);
         continue;
       }
     }
@@ -227,8 +253,13 @@ export async function mergeSkillsIntoHub(
       entries = await fsp.readdir(skillsDir, { withFileTypes: true });
     } catch (err: any) {
       if (err.code === 'ENOENT' && isLink) {
+        processedAgentNames.push(agent.name);
         continue;
       }
+      (err as PartialMergeError).agentbridgePartialMergeContext = {
+        failedAgentName: agent.name,
+        succeededAgentNames: [...processedAgentNames],
+      };
       throw err;
     }
     for (const entry of entries) {
@@ -271,6 +302,7 @@ export async function mergeSkillsIntoHub(
         importedSkills.push(`${agent.name} / ${entry.name}`);
       }
     }
+    processedAgentNames.push(agent.name);
   }
 
   return { importedSkills, collisions };
