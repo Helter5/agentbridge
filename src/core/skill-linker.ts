@@ -161,15 +161,42 @@ export async function listSkillsInDirectory(dirPath: string): Promise<SkillManif
 /**
  * Merges skill directories from multiple agent paths into the central hub
  */
+export interface MergeSkillsResult {
+  importedSkills: string[];
+  /**
+   * A genuine content collision: two different agents each had a skill
+   * folder with the same name but different SKILL.md content (not just the
+   * same skill being re-synced a second time). copyDirRecursive()'s own
+   * overwrite=false only skips individual files that already exist - it
+   * never reports this, so without tracking it here the losing agent's
+   * skill was silently discarded while still being counted in
+   * importedSkills as a plain success (see readme/PR history for the
+   * near-identical bug already fixed in the pick command's collision
+   * handling - this is the same shape in the link-skills merge path).
+   */
+  collisions: Array<{ skillName: string; keptFrom: string; discardedFrom: string }>;
+}
+
 export async function mergeSkillsIntoHub(
   agents: DetectedAgent[],
   hubPath: string,
   options: SkillLinkOptions = {}
-): Promise<string[]> {
+): Promise<MergeSkillsResult> {
   const absHub = getHubSkillsPath(hubPath);
-  await ensureDir(absHub);
+  // Dry-run must not touch disk at all - ensureDir() unconditionally here
+  // (even though the actual copy below is already correctly gated) left a
+  // stray empty hub directory behind after a run that promised to "simulate
+  // actions without writing to disk".
+  if (!options.dryRun) {
+    await ensureDir(absHub);
+  }
 
   const importedSkills: string[] = [];
+  const collisions: MergeSkillsResult['collisions'] = [];
+  // Tracks which agent's copy currently occupies each hub skill dir, within
+  // this single call - best-effort provenance for a collision message, not
+  // persisted across separate agentbridge invocations.
+  const skillOwner: Record<string, string> = {};
 
   for (const agent of agents) {
     const skillsDir = expandHome(agent.paths.skillsDir);
@@ -211,10 +238,34 @@ export async function mergeSkillsIntoHub(
 
         if (!options.dryRun) {
           if (await pathExists(destSkillDir)) {
+            // Detect a genuine content collision before merging - two
+            // different agents' skill folders sharing the same name is
+            // common (the same skill, copied across agents) and merging
+            // file-by-file is the right move there. But if their SKILL.md
+            // content actually differs, this is a real collision: the
+            // incoming one is about to be silently discarded (merge below
+            // keeps whatever's already in destSkillDir, per file), so record
+            // it rather than letting it vanish behind a plain "Imported".
+            const srcSkillMd = path.join(srcSkillDir, 'SKILL.md');
+            const destSkillMd = path.join(destSkillDir, 'SKILL.md');
+            if ((await pathExists(srcSkillMd)) && (await pathExists(destSkillMd))) {
+              const [srcContent, destContent] = await Promise.all([
+                fsp.readFile(srcSkillMd, 'utf-8'),
+                fsp.readFile(destSkillMd, 'utf-8'),
+              ]);
+              if (srcContent !== destContent) {
+                collisions.push({
+                  skillName: entry.name,
+                  keptFrom: skillOwner[destSkillDir] || 'an earlier sync',
+                  discardedFrom: agent.name,
+                });
+              }
+            }
             // Merge files without overwriting newer existing files
             await copyDirRecursive(srcSkillDir, destSkillDir, false);
           } else {
             await copyDirRecursive(srcSkillDir, destSkillDir, true);
+            skillOwner[destSkillDir] = agent.name;
           }
         }
         importedSkills.push(`${agent.name} / ${entry.name}`);
@@ -222,7 +273,7 @@ export async function mergeSkillsIntoHub(
     }
   }
 
-  return importedSkills;
+  return { importedSkills, collisions };
 }
 
 /**
@@ -239,7 +290,7 @@ export async function linkAgentsToHub(
   }
 
   // 1. Merge all existing skills into hub first to prevent data loss
-  const importedSkills = await mergeSkillsIntoHub(agents, absHub, options);
+  const { importedSkills, collisions } = await mergeSkillsIntoHub(agents, absHub, options);
 
   const linkedAgents: SkillLinkResult[] = [];
 
@@ -312,6 +363,7 @@ export async function linkAgentsToHub(
   return {
     hubPath: absHub,
     importedSkills,
+    collisions,
     linkedAgents,
     totalSkillsInHub: allHubSkills.length,
   };

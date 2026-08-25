@@ -108,11 +108,131 @@ describe('Skill Linking Engine', () => {
       isLinkedToHub: false,
     };
 
-    const imported = await mergeSkillsIntoHub([mockAgent], tempHub);
-    expect(imported.length).toBe(1);
+    const merged = await mergeSkillsIntoHub([mockAgent], tempHub);
+    expect(merged.importedSkills.length).toBe(1);
+    expect(merged.collisions).toEqual([]);
 
     const hubSkills = await listSkillsInDirectory(tempHub);
     expect(hubSkills.some((s) => s.dirName === 'legacy-skill')).toBe(true);
+  });
+
+  it('mergeSkillsIntoHub() with options.dryRun does not create the hub directory at all', async () => {
+    // ensureDir(absHub) was previously unconditional - a dry-run promising
+    // to "simulate actions without writing to disk" still left a stray
+    // empty hub directory behind.
+    const agentSkillsDir = path.join(tempDir, 'agent-dryrun-skills');
+    await ensureDir(path.join(agentSkillsDir, 'some-skill'));
+    await fsp.writeFile(
+      path.join(agentSkillsDir, 'some-skill', 'SKILL.md'),
+      `---\nname: some-skill\ndescription: A skill\n---\n\nBody\n`,
+      'utf-8'
+    );
+
+    const mockAgent: DetectedAgent = {
+      id: 'antigravity',
+      name: 'Google Antigravity',
+      displayName: 'Google Antigravity',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentSkillsDir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+
+    const freshHub = path.join(tempDir, 'never-created-hub');
+    expect(await pathExists(freshHub)).toBe(false);
+
+    const merged = await mergeSkillsIntoHub([mockAgent], freshHub, { dryRun: true });
+    expect(merged.importedSkills.length).toBe(1); // still reports what WOULD be imported
+    expect(await pathExists(freshHub)).toBe(false); // but touches nothing on disk
+  });
+
+  it('mergeSkillsIntoHub() reports a collision (not a plain "Imported") when two agents have a same-named skill with different content', async () => {
+    // Found via manual testing of link-skills specifically (distinct from
+    // the pick-flow collision already fixed): copyDirRecursive()'s
+    // overwrite=false silently keeps whichever agent's version got there
+    // first and drops the other's, per file - previously with zero
+    // indication in the result, so both agents' skills were reported via
+    // the same plain importedSkills success list even though only one
+    // agent's content actually survived.
+    const agentADir = path.join(tempDir, 'agent-a-skills');
+    const agentBDir = path.join(tempDir, 'agent-b-skills');
+    await ensureDir(path.join(agentADir, 'shared-name'));
+    await ensureDir(path.join(agentBDir, 'shared-name'));
+    await fsp.writeFile(
+      path.join(agentADir, 'shared-name', 'SKILL.md'),
+      `---\nname: shared-name\ndescription: Agent A version\n---\n\nAGENT_A_CONTENT\n`,
+      'utf-8'
+    );
+    await fsp.writeFile(
+      path.join(agentBDir, 'shared-name', 'SKILL.md'),
+      `---\nname: shared-name\ndescription: Agent B version\n---\n\nAGENT_B_CONTENT\n`,
+      'utf-8'
+    );
+
+    const agentA: DetectedAgent = {
+      id: 'agent-a',
+      name: 'Agent A',
+      displayName: 'Agent A',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentADir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+    const agentB: DetectedAgent = {
+      id: 'agent-b',
+      name: 'Agent B',
+      displayName: 'Agent B',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentBDir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+
+    const merged = await mergeSkillsIntoHub([agentA, agentB], tempHub);
+    expect(merged.collisions).toEqual([
+      { skillName: 'shared-name', keptFrom: 'Agent A', discardedFrom: 'Agent B' },
+    ]);
+
+    const skillMd = await fsp.readFile(path.join(tempHub, 'shared-name', 'SKILL.md'), 'utf-8');
+    expect(skillMd).toContain('AGENT_A_CONTENT');
+    expect(skillMd).not.toContain('AGENT_B_CONTENT');
+  });
+
+  it('mergeSkillsIntoHub() reports no collision when two agents have the exact same skill content (a normal re-sync, not a conflict)', async () => {
+    const agentADir = path.join(tempDir, 'agent-a2-skills');
+    const agentBDir = path.join(tempDir, 'agent-b2-skills');
+    const identicalContent = `---\nname: shared-name\ndescription: Same everywhere\n---\n\nSAME_CONTENT\n`;
+    await ensureDir(path.join(agentADir, 'shared-name'));
+    await ensureDir(path.join(agentBDir, 'shared-name'));
+    await fsp.writeFile(path.join(agentADir, 'shared-name', 'SKILL.md'), identicalContent, 'utf-8');
+    await fsp.writeFile(path.join(agentBDir, 'shared-name', 'SKILL.md'), identicalContent, 'utf-8');
+
+    const agentA: DetectedAgent = {
+      id: 'agent-a2',
+      name: 'Agent A2',
+      displayName: 'Agent A2',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentADir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+    const agentB: DetectedAgent = {
+      id: 'agent-b2',
+      name: 'Agent B2',
+      displayName: 'Agent B2',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentBDir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+
+    const merged = await mergeSkillsIntoHub([agentA, agentB], tempHub);
+    expect(merged.collisions).toEqual([]);
   });
 
   it('links an agent to the central hub using cross-platform links', async () => {
@@ -544,8 +664,9 @@ describe('Skill Linking Engine', () => {
 
     // Must not throw - the broken agent is skipped, not fatal to the
     // whole hub merge.
-    const imported = await mergeSkillsIntoHub([mockAgent], tempHub);
-    expect(imported).toEqual([]);
+    const merged = await mergeSkillsIntoHub([mockAgent], tempHub);
+    expect(merged.importedSkills).toEqual([]);
+    expect(merged.collisions).toEqual([]);
 
     // linkAgentsToHub() must also complete and actually fix the broken
     // link by replacing it with a working one to the hub.
