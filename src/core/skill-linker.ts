@@ -33,6 +33,38 @@ export interface SkillLinkOptions {
 }
 
 /**
+ * Sanitizes an untrusted skill name into a safe directory-name segment.
+ * Strips everything but lowercase alphanumerics/hyphen/underscore, so a
+ * value like "../../../../.ssh/authorized_keys" (e.g. from a malicious
+ * skill's SKILL.md frontmatter `name:` field, which has no format
+ * restriction) collapses to a harmless single segment instead of escaping
+ * the intended target directory when joined into a path.
+ */
+export function sanitizeSkillDirName(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unnamed-skill';
+}
+
+/**
+ * Joins `name` under `baseDir` after sanitizing it, and asserts the
+ * result is actually still inside `baseDir`. Throws if it is not -
+ * defense in depth on top of sanitizeSkillDirName() in case a future
+ * caller passes an already-sanitized-looking value that isn't.
+ */
+function resolveSkillDestDir(baseDir: string, name: string): string {
+  const destDir = path.join(baseDir, sanitizeSkillDirName(name));
+  const resolvedBase = path.resolve(baseDir);
+  const resolvedDest = path.resolve(destDir);
+  if (resolvedDest !== resolvedBase && !resolvedDest.startsWith(resolvedBase + path.sep)) {
+    throw new Error(`Refusing to import skill '${name}': resolved path escapes target directory.`);
+  }
+  return destDir;
+}
+
+/**
  * Gets the absolute path of the central skills hub
  */
 export function getHubSkillsPath(customPath?: string): string {
@@ -281,10 +313,7 @@ export async function createNewSkill(
   await ensureDir(absHub);
 
   // Normalize directory name
-  const sanitizedName = name
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, '-')
-    .replace(/-+/g, '-');
+  const sanitizedName = sanitizeSkillDirName(name);
 
   const skillDir = path.join(absHub, sanitizedName);
   await ensureDir(skillDir);
@@ -436,7 +465,17 @@ export async function selectivelyImportSkills(
   const failedSkills: Array<{ name: string; error: string }> = [];
 
   for (const skill of skillsToImport) {
-    const destDir = path.join(absTarget, skill.name);
+    let destDir: string;
+    try {
+      // skill.name may come straight from a parsed SKILL.md's YAML
+      // frontmatter (see readSkillDirectory/discoverAllAvailableSkills),
+      // which has no format restriction - treat it as untrusted input,
+      // not internal metadata, before it's ever used as a path segment.
+      destDir = resolveSkillDestDir(absTarget, skill.name);
+    } catch (err: any) {
+      failedSkills.push({ name: skill.name, error: err.message || String(err) });
+      continue;
+    }
     try {
       if (skill.type === 'directory') {
         await copyDirRecursive(skill.sourcePath, destDir, options.overwrite);
