@@ -11,7 +11,7 @@ import {
 import { ensureDir, pathExists } from '../src/utils/fs.js';
 
 describe('Rule Consolidator Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-rules-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-rules-test-${Date.now()}`);
 
   beforeEach(async () => {
     await ensureDir(tempDir);
@@ -55,7 +55,7 @@ describe('Rule Consolidator Engine', () => {
 
     const claudeContent = await fsp.readFile(claudeMd, 'utf-8');
     expect(claudeContent).toContain('# Core Rules');
-    expect(claudeContent).toContain('Auto-synchronized by AgentSync');
+    expect(claudeContent).toContain('Auto-synchronized by AgentBridge');
 
     const inspection = await inspectProjectRules(tempDir);
     const claudeTarget = inspection.targets.find((t) => t.fileName === 'CLAUDE.md');

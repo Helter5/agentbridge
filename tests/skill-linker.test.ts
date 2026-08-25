@@ -16,7 +16,7 @@ import type { DetectedAgent } from '../src/types/client.js';
 import type { DiscoveredSkill } from '../src/types/skill.js';
 
 describe('Skill Linking Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-skills-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-skills-test-${Date.now()}`);
   const tempHub = path.join(tempDir, 'hub-skills');
 
   beforeEach(async () => {

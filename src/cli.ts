@@ -2,6 +2,8 @@ import { Command } from 'commander';
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { printBanner, renderTable, icons, badge, formatStatusLine } from './utils/ui.js';
 import { detectInstalledAgents } from './core/detector.js';
 import {
@@ -15,15 +17,24 @@ import { syncProjectRules, inspectProjectRules } from './core/rules.js';
 import { runDiagnostics, fixDiagnostics } from './core/doctor.js';
 import { contractHome } from './utils/fs.js';
 
+// Read the version from package.json at runtime rather than hardcoding a
+// literal here - a hardcoded string silently drifts out of sync with the
+// actual published version on every bump (it did: this file said 0.1.0
+// while package.json had already moved to 0.2.0). Resolved relative to
+// this file's own location so it works both from src/ (dev) and from the
+// bundled dist/cli.js (one directory up from the package root either way).
+const packageJsonPath = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+const { version: packageVersion } = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+
 const program = new Command();
 
 program
-  .name('agentsync')
+  .name('agentbridge')
   .description('Universal Skill & MCP Sync Engine for AI Coding Agents')
-  .version('0.1.0');
+  .version(packageVersion);
 
 /**
- * agentsync status
+ * agentbridge status
  */
 program
   .command('status')
@@ -125,7 +136,7 @@ program
   });
 
 /**
- * agentsync pick / import
+ * agentbridge pick / import
  */
 program
   .command('pick')
@@ -135,7 +146,7 @@ program
   .option('--hub <path>', 'Custom skills hub directory')
   .action(async (options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync pick & import ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge pick & import ')));
 
     const hubPath = getHubSkillsPath(options.hub);
     const agents = await detectInstalledAgents({ customHubPath: hubPath, checkAll: true });
@@ -240,7 +251,7 @@ program
   });
 
 /**
- * agentsync link-skills
+ * agentbridge link-skills
  */
 program
   .command('link-skills')
@@ -251,7 +262,7 @@ program
   .option('--no-backup', 'Do not backup direct skill folders before linking')
   .action(async (options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync link-skills ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge link-skills ')));
 
     const hubPath = getHubSkillsPath(options.hub);
     const agents = await detectInstalledAgents({ customHubPath: hubPath, checkAll: false });
@@ -318,7 +329,7 @@ program
   });
 
 /**
- * agentsync sync-mcp
+ * agentbridge sync-mcp
  */
 program
   .command('sync-mcp')
@@ -328,7 +339,7 @@ program
   .option('--dry-run', 'Simulate actions without writing to disk')
   .action(async (options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync sync-mcp ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge sync-mcp ')));
 
     const agents = await detectInstalledAgents({ checkAll: false });
     const { mergedServers, serverSources } = await collectMcpServers(agents);
@@ -398,7 +409,7 @@ program
   });
 
 /**
- * agentsync sync-rules
+ * agentbridge sync-rules
  */
 program
   .command('sync-rules')
@@ -408,7 +419,7 @@ program
   .option('-y, --yes', 'Automatically confirm all prompts')
   .action(async (options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync sync-rules ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge sync-rules ')));
 
     const projectRoot = path.resolve(options.cwd);
     const { sourceFile, targets } = await inspectProjectRules(projectRoot);
@@ -478,7 +489,7 @@ program
   });
 
 /**
- * agentsync add-skill <name>
+ * agentbridge add-skill <name>
  */
 program
   .command('add-skill <name>')
@@ -489,7 +500,7 @@ program
   .option('--hub <path>', 'Custom skills hub directory')
   .action(async (name, options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(` agentsync add-skill : ${name} `)));
+    p.intro(pc.bgCyan(pc.black(` agentbridge add-skill : ${name} `)));
 
     let description = options.desc;
     if (!description) {
@@ -539,7 +550,7 @@ program
   });
 
 /**
- * agentsync doctor
+ * agentbridge doctor
  */
 program
   .command('doctor')
@@ -548,7 +559,7 @@ program
   .option('--hub <path>', 'Custom skills hub directory')
   .action(async (options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync doctor ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge doctor ')));
 
     const s = p.spinner();
     s.start('Running system diagnostics...');
@@ -588,7 +599,7 @@ program
         );
       } else {
         p.log.info(
-          `${report.summary.fixableCount} issue(s) can be automatically fixed with ${pc.cyan('agentsync doctor --fix')}`
+          `${report.summary.fixableCount} issue(s) can be automatically fixed with ${pc.cyan('agentbridge doctor --fix')}`
         );
       }
     }
@@ -601,7 +612,7 @@ program
   });
 
 /**
- * agentsync unlink
+ * agentbridge unlink
  */
 program
   .command('unlink')
@@ -610,7 +621,7 @@ program
   .option('--no-restore', 'Do not copy hub skills back into standalone folders')
   .action(async (options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync unlink ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge unlink ')));
 
     const agents = await detectInstalledAgents({ checkAll: false });
     const linked = agents.filter((a) => a.isLinkedToHub);
@@ -655,7 +666,7 @@ program
   });
 
 /**
- * agentsync rollback
+ * agentbridge rollback
  */
 program
   .command('rollback [snapshotId]')
@@ -663,13 +674,13 @@ program
   .option('-l, --list', 'List all available backup snapshots')
   .action(async (snapshotId, options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync rollback ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge rollback ')));
 
     const { listBackupSnapshots, restoreBackupSnapshot } = await import('./core/rollback.js');
     const snapshots = await listBackupSnapshots();
 
     if (snapshots.length === 0) {
-      p.log.info('No backup snapshots found in ~/.agentsync/backups');
+      p.log.info('No backup snapshots found in ~/.agentbridge/backups');
       p.outro(pc.dim('Done.'));
       return;
     }
@@ -727,7 +738,7 @@ program
   });
 
 /**
- * agentsync watch
+ * agentbridge watch
  */
 program
   .command('watch')
@@ -735,7 +746,7 @@ program
   .option('-c, --cwd <dir>', 'Project root directory', process.cwd())
   .action(async (options) => {
     printBanner();
-    p.intro(pc.bgCyan(pc.black(' agentsync watch ')));
+    p.intro(pc.bgCyan(pc.black(' agentbridge watch ')));
 
     p.log.info('Starting file watcher for skills hub and workspace rules...');
     p.log.info(pc.dim('Press Ctrl+C to stop watching.\n'));
