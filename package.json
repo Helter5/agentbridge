@@ -1,6 +1,6 @@
 {
   "name": "agentsync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Universal Skill & MCP Sync Engine for AI Coding Agents (Antigravity, Claude Code, Codex, Cursor)",
   "type": "module",
   "bin": {
