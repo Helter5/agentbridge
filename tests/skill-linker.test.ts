@@ -11,7 +11,7 @@ import {
   selectivelyImportSkills,
   sanitizeSkillDirName,
 } from '../src/core/skill-linker.js';
-import { ensureDir, pathExists, isSymlinkOrJunction } from '../src/utils/fs.js';
+import { ensureDir, pathExists, isSymlinkOrJunction, createCrossPlatformLink } from '../src/utils/fs.js';
 import type { DetectedAgent } from '../src/types/client.js';
 import type { DiscoveredSkill } from '../src/types/skill.js';
 
@@ -321,5 +321,51 @@ describe('Skill Linking Engine', () => {
     const finalContent = await fsp.readFile(skillFilePath, 'utf-8');
     expect(finalContent).toContain('DIFFERENT_B_CONTENT_MARKER');
     expect(finalContent).not.toContain('ORIGINAL_A_CONTENT_MARKER');
+  });
+
+  it('mergeSkillsIntoHub()/linkAgentsToHub() skip a broken (orphaned-target) symlink/junction instead of crashing', async () => {
+    // Found via manual end-to-end testing on a real machine, not by
+    // inspection: an agent's skillsDir can be a symlink/junction whose
+    // target no longer exists (e.g. left over from a hub rename). On
+    // Windows, fs.access() on an orphaned junction reparse point can
+    // report the entry as accessible even though its target is gone, so
+    // pathExists() alone isn't a reliable guard - readdir() was the first
+    // place this actually threw ENOENT and crashed the whole
+    // link-skills command for every agent, not just the broken one.
+    const realTarget = path.join(tempDir, 'real-target-dir');
+    await ensureDir(realTarget);
+    const skillsDir = path.join(tempDir, 'agent-skills-dir');
+    const linkRes = await createCrossPlatformLink(realTarget, skillsDir, 'dir');
+    expect(linkRes.success).toBe(true);
+    expect(await isSymlinkOrJunction(skillsDir)).toBe(true);
+
+    // Orphan it: remove the target the link points to, without removing
+    // the link/junction itself.
+    await fsp.rm(realTarget, { recursive: true, force: true });
+
+    const mockAgent: DetectedAgent = {
+      id: 'claude',
+      name: 'Claude Code',
+      displayName: 'Claude Code',
+      isInstalled: true,
+      paths: {
+        configDir: tempDir,
+        skillsDir,
+      },
+      existingSkillsCount: 0,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+
+    // Must not throw - the broken agent is skipped, not fatal to the
+    // whole hub merge.
+    const imported = await mergeSkillsIntoHub([mockAgent], tempHub);
+    expect(imported).toEqual([]);
+
+    // linkAgentsToHub() must also complete and actually fix the broken
+    // link by replacing it with a working one to the hub.
+    const summary = await linkAgentsToHub([mockAgent], tempHub);
+    expect(summary.linkedAgents[0].success).toBe(true);
+    expect(await isSymlinkOrJunction(skillsDir)).toBe(true);
   });
 });
