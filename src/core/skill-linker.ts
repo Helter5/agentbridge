@@ -319,6 +319,16 @@ export async function createNewSkill(
   await ensureDir(skillDir);
 
   const skillFile = path.join(skillDir, 'SKILL.md');
+  // Same collision risk as MEDIUM-002 (selectivelyImportSkills): sanitizedName
+  // can match an already-existing skill (typed again, or a differently-typed
+  // name that happens to sanitize the same way). There's no --overwrite flag
+  // on `add-skill` yet, so an existing skill is never silently replaced -
+  // fail with a clear error instead.
+  if (await pathExists(skillFile)) {
+    throw new Error(
+      `Skill '${sanitizedName}' already exists at ${skillFile} - skill already exists, refusing to overwrite it.`
+    );
+  }
   const markdown = generateSkillMarkdown({
     name: sanitizedName,
     description: options.description || `Custom skill for ${name}`,
@@ -481,6 +491,20 @@ export async function selectivelyImportSkills(
         await copyDirRecursive(skill.sourcePath, destDir, options.overwrite);
       } else {
         // Standalone markdown file -> wrap in folder with SKILL.md
+        const skillFilePath = path.join(destDir, 'SKILL.md');
+        // sanitizeSkillDirName() can map different skill.name values to the
+        // same destDir (e.g. "My Skill!!!" and "my-skill" both sanitize to
+        // "my-skill"), and it's also common for the same skill to exist
+        // independently in more than one agent's directory. Mirror
+        // copyDirRecursive()'s per-file overwrite check (utils/fs.ts) here
+        // instead of unconditionally overwriting an existing SKILL.md.
+        if (options.overwrite !== true && (await pathExists(skillFilePath))) {
+          failedSkills.push({
+            name: skill.name,
+            error: `Skipped: '${skillFilePath}' already exists — use overwrite to replace it.`,
+          });
+          continue;
+        }
         await ensureDir(destDir);
         const raw = await fsp.readFile(skill.sourcePath, 'utf-8');
         const parsed = parseFrontmatter(raw);
@@ -495,7 +519,7 @@ export async function selectivelyImportSkills(
         const wrote = await withLock(
           lockFilePath,
           async () => {
-            await fsp.writeFile(path.join(destDir, 'SKILL.md'), finalContent, 'utf-8');
+            await fsp.writeFile(skillFilePath, finalContent, 'utf-8');
           },
           { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
         );
