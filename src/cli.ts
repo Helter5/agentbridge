@@ -798,8 +798,28 @@ program
       onSkillChange: (event, filename) => {
         p.log.message(`${icons.link} Skill change detected: ${pc.cyan(filename || 'unknown')} (${event})`);
       },
-      onRuleChange: (event, filename) => {
-        p.log.success(`✔ Auto-synchronized ${pc.bold(filename || 'AGENTS.md')} to CLAUDE.md / GEMINI.md / .cursorrules`);
+      onRuleChange: (event, filename, result) => {
+        // result.targets can carry per-target 'failed' entries (e.g. a
+        // target file locked by another concurrently-running agentbridge
+        // command) even though syncProjectRules() itself resolved normally -
+        // a bare unconditional success message here would claim a clean
+        // sync while some or all targets were actually left untouched.
+        const failed = result.targets.filter((t) => t.action === 'failed');
+        if (failed.length > 0) {
+          const succeededNames = result.targets
+            .filter((t) => t.action !== 'failed')
+            .map((t) => t.fileName);
+          p.log.warn(
+            `⚠ Partially synchronized ${pc.bold(filename || 'AGENTS.md')}` +
+              (succeededNames.length > 0 ? ` (ok: ${succeededNames.join(', ')})` : '') +
+              ` - failed: ${failed.map((f) => `${f.fileName} (${f.error})`).join('; ')}`
+          );
+        } else {
+          p.log.success(`✔ Auto-synchronized ${pc.bold(filename || 'AGENTS.md')} to CLAUDE.md / GEMINI.md / .cursorrules`);
+        }
+      },
+      onRuleSyncError: (event, filename, error) => {
+        p.log.error(`✖ Failed to synchronize ${pc.bold(filename || 'AGENTS.md')}: ${error}`);
       },
     });
 

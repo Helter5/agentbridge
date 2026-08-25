@@ -3,13 +3,32 @@ import path from 'node:path';
 import { pathExists, withLock, resolveSharedLockPath } from '../utils/fs.js';
 import { getHubSkillsPath } from './skill-linker.js';
 import { syncProjectRules } from './rules.js';
+import type { RuleSyncResult } from '../types/rules.js';
 
 export interface WatcherOptions {
   hubPath?: string;
   projectRoot?: string;
   debounceMs?: number;
   onSkillChange?: (eventType: string, filename: string | null) => void;
-  onRuleChange?: (eventType: string, filename: string | null) => void;
+  /**
+   * Fires after every debounced AGENTS.md resync that actually ran to
+   * completion (didn't throw) - `result` is the real per-target outcome
+   * from syncProjectRules(), including any 'failed' targets (e.g. from
+   * lock contention with another concurrently-running agentbridge
+   * command). Check `result.targets` before treating this as a clean
+   * success - see onRuleSyncError for the case where syncProjectRules()
+   * itself threw instead of returning a result.
+   */
+  onRuleChange?: (eventType: string, filename: string | null, result: RuleSyncResult) => void;
+  /**
+   * Fires when the debounced resync itself throws (distinct from a
+   * per-target 'failed' entry in a resolved RuleSyncResult - see
+   * onRuleChange) - e.g. AGENTS.md becoming unreadable between the
+   * change event and the read. Without this, such an error would
+   * propagate out of an async setTimeout callback as an unhandled
+   * rejection, with no chance for a caller to log it or keep watching.
+   */
+  onRuleSyncError?: (eventType: string, filename: string | null, error: string) => void;
 }
 
 /**
@@ -39,9 +58,17 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
     try {
       // syncProjectRules() locks its own writes internally (see rules.ts);
       // no outer withLock here to avoid nesting on the same lockfile.
-      await syncProjectRules(projectRoot, { mode: 'copy' });
-    } catch {
-      // Non-critical
+      const initialResult = await syncProjectRules(projectRoot, { mode: 'copy' });
+      if (options.onRuleChange) {
+        options.onRuleChange('initial', 'AGENTS.md', initialResult);
+      }
+    } catch (err: any) {
+      // Non-critical to watcher startup itself (watchers still get
+      // registered below either way), but still worth surfacing - same
+      // reasoning as the debounced resync's own catch further down.
+      if (options.onRuleSyncError) {
+        options.onRuleSyncError('initial', 'AGENTS.md', err.message || String(err));
+      }
     }
   }
 
@@ -90,9 +117,28 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
           // timer fires.
           // syncProjectRules() locks its own writes internally (see rules.ts);
           // no outer withLock here to avoid nesting on the same lockfile.
-          await syncProjectRules(projectRoot, { mode: 'copy' });
-          if (options.onRuleChange) {
-            options.onRuleChange(eventType, 'AGENTS.md');
+          try {
+            // The result MUST be inspected, not discarded: syncProjectRules()
+            // catches its own per-target write failures internally (e.g. a
+            // target file locked by another concurrently-running agentbridge
+            // command) and returns them as `targets[].action === 'failed'`
+            // rather than throwing - a caller that fires a bare "success"
+            // callback on any resolution, ignoring the result, ends up
+            // reporting a clean sync even when every target actually failed.
+            const result = await syncProjectRules(projectRoot, { mode: 'copy' });
+            if (options.onRuleChange) {
+              options.onRuleChange(eventType, 'AGENTS.md', result);
+            }
+          } catch (err: any) {
+            // A genuine throw (e.g. AGENTS.md becomes unreadable between the
+            // change event and this read) - without this catch, it would
+            // escape as an unhandled rejection from this async setTimeout
+            // callback, silently killing the whole watch process with no
+            // clear message (see the initial-reconciliation sync above,
+            // which already has this same guard).
+            if (options.onRuleSyncError) {
+              options.onRuleSyncError(eventType, 'AGENTS.md', err.message || String(err));
+            }
           }
         }, debounceDelay);
       });
