@@ -220,7 +220,7 @@ export function isKnownDummySecret(str: string): boolean {
  */
 export function detectPotentialSecrets(
   value: string,
-  options: { ignoreList?: string[] } = {}
+  options: { ignoreList?: string[]; fieldName?: string } = {}
 ): {
   hasSecret: boolean;
   reason?: string;
@@ -241,12 +241,39 @@ export function detectPotentialSecrets(
     return { hasSecret: false };
   }
 
+  // A 40/64-char hex string in a field clearly labeled as a commit/hash is a
+  // git SHA, not a secret - skip it regardless of which check below would
+  // otherwise match it (e.g. a bare 40-hex GitHub classic token look-alike).
+  const isLabeledHash =
+    !!options.fieldName &&
+    /commit|\bsha\b|hash/i.test(options.fieldName) &&
+    /^[0-9a-f]{40}([0-9a-f]{24})?$/i.test(value.trim());
+  if (isLabeledHash) {
+    return { hasSecret: false };
+  }
+
   // 1. Common token prefixes
   if (/ghp_[a-zA-Z0-9]{30,}/.test(value)) return { hasSecret: true, reason: 'GitHub Personal Access Token (ghp_...)' };
   if (/gho_[a-zA-Z0-9]{30,}/.test(value)) return { hasSecret: true, reason: 'GitHub OAuth Token (gho_...)' };
   if (/sk-[a-zA-Z0-9]{32,}/.test(value)) return { hasSecret: true, reason: 'OpenAI Secret Key (sk-...)' };
   if (/sk-ant-[a-zA-Z0-9]{32,}/.test(value)) return { hasSecret: true, reason: 'Anthropic API Key (sk-ant-...)' };
   if (/bearer\s+[a-zA-Z0-9_.\-~+/=]{20,}/i.test(value)) return { hasSecret: true, reason: 'Bearer Authentication Token' };
+  if (/AKIA[0-9A-Z]{16}/.test(value)) return { hasSecret: true, reason: 'AWS Access Key ID (AKIA...)' };
+  if (/AIza[0-9A-Za-z\-_]{35}/.test(value)) return { hasSecret: true, reason: 'Google API Key (AIza...)' };
+  if (/xox[bp]-[a-zA-Z0-9-]{10,}/.test(value)) return { hasSecret: true, reason: 'Slack Token (xoxb-/xoxp-...)' };
+  if (/eyJ[a-zA-Z0-9_-]{5,}\.eyJ[a-zA-Z0-9_-]{5,}\.[a-zA-Z0-9_-]{5,}/.test(value)) return { hasSecret: true, reason: 'JWT Token' };
+  if (/npm_[a-zA-Z0-9]{36}/.test(value)) return { hasSecret: true, reason: 'npm Access Token (npm_...)' };
+
+  // Bare 40-char hex string not labeled as a commit/hash: could be an
+  // old-style GitHub classic personal access token (they predate the
+  // ghp_ prefix and are indistinguishable from a git SHA by format
+  // alone - the fieldName-based exclusion above is the only way to tell
+  // them apart).
+  if (!options.fieldName || !/commit|\bsha\b|hash/i.test(options.fieldName)) {
+    if (/^[0-9a-f]{40}$/i.test(value.trim())) {
+      return { hasSecret: true, reason: 'Possible GitHub Classic Token or bare hex secret (40-char hex)' };
+    }
+  }
 
   // 2. High-entropy generic API keys / tokens (length > 28, entropy > 4.5)
   const tokenCandidate = value.match(/[a-zA-Z0-9_.\-~+/=]{30,}/);

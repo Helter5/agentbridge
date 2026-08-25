@@ -7,6 +7,8 @@ import {
   validateMCPConfigFile,
   detectPotentialSecrets,
   interpolateEnvString,
+  redactEnvValue,
+  calculateShannonEntropy,
 } from '../src/utils/schema.js';
 
 describe('Schema & Frontmatter Utilities', () => {
@@ -74,6 +76,72 @@ Follow these steps...`;
     expect(detectPotentialSecrets('postgres://ais_admin:P@ssw0rd987@localhost:5432/db').hasSecret).toBe(true);
     expect(detectPotentialSecrets('npx -y @modelcontextprotocol/server-postgres').hasSecret).toBe(false);
     expect(detectPotentialSecrets('ghp_test_placeholder_key').hasSecret).toBe(false);
+  });
+
+  it('detects additional known secret token formats', () => {
+    expect(detectPotentialSecrets('AKIAABCDEFGHIJKLMNOP').hasSecret).toBe(true); // AWS access key
+    expect(detectPotentialSecrets('AIzaSyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q').hasSecret).toBe(true); // Google API key
+    expect(detectPotentialSecrets('xoxb-111222333-abcdefghijklmnopqrst').hasSecret).toBe(true); // Slack bot token
+    expect(
+      detectPotentialSecrets(
+        'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
+      ).hasSecret
+    ).toBe(true); // JWT
+    expect(detectPotentialSecrets('npm_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6').hasSecret).toBe(true); // npm token
+  });
+
+  it('treats a bare 40-hex string as a possible secret, unless the field is a commit/sha/hash', () => {
+    const hex40 = 'f'.repeat(40);
+    expect(hex40.length).toBe(40);
+
+    expect(detectPotentialSecrets(hex40).hasSecret).toBe(true);
+    expect(detectPotentialSecrets(hex40, { fieldName: 'apiKey' }).hasSecret).toBe(true);
+
+    expect(detectPotentialSecrets(hex40, { fieldName: 'commitSha' }).hasSecret).toBe(false);
+    expect(detectPotentialSecrets(hex40, { fieldName: 'commit_hash' }).hasSecret).toBe(false);
+    expect(detectPotentialSecrets(hex40, { fieldName: 'sha' }).hasSecret).toBe(false);
+  });
+
+  it('calculates Shannon entropy for boundary-case strings', () => {
+    expect(calculateShannonEntropy('')).toBe(0);
+    expect(calculateShannonEntropy('aaaaaaaaaa')).toBe(0); // zero entropy: single repeated char
+    // A hex-only string (16 possible symbols) caps out at log2(16) = 4 bits,
+    // always below the 4.5 high-entropy threshold used by detectPotentialSecrets.
+    const hexEntropy = calculateShannonEntropy('0123456789abcdef0123456789abcdef');
+    expect(hexEntropy).toBeLessThan(4.5);
+    // A random-looking mixed-case alphanumeric secret should exceed the threshold.
+    const secretEntropy = calculateShannonEntropy('xT9$mQ2vL7pR4wZ8kN1bY6cF3hJ5gD0a');
+    expect(secretEntropy).toBeGreaterThan(4.5);
+  });
+
+  it('round-trips ${VAR} through interpolateEnvString and back via redactEnvValue', () => {
+    const varName = 'AGENTSYNC_SCHEMA_TEST_VAR';
+    const original = process.env[varName];
+    process.env[varName] = 'resolved-secret-value';
+
+    try {
+      const placeholder = `\${${varName}}`;
+      const resolved = interpolateEnvString(placeholder);
+      expect(resolved).toBe('resolved-secret-value');
+
+      const backToPlaceholder = redactEnvValue(varName, resolved);
+      expect(backToPlaceholder).toBe(placeholder);
+
+      // A value that doesn't match the env var is left untouched.
+      expect(redactEnvValue(varName, 'unrelated-value')).toBe('unrelated-value');
+
+      // An already-placeholder value passes through unchanged.
+      expect(redactEnvValue(varName, placeholder)).toBe(placeholder);
+    } finally {
+      if (original === undefined) delete process.env[varName];
+      else process.env[varName] = original;
+    }
+  });
+
+  it('leaves interpolateEnvString references unresolved when the env var is unset', () => {
+    const varName = 'AGENTSYNC_SCHEMA_TEST_UNSET_VAR';
+    delete process.env[varName];
+    expect(interpolateEnvString(`\${${varName}}`)).toBe(`\${${varName}}`);
   });
 
   it('validates MCP server config schema', () => {
