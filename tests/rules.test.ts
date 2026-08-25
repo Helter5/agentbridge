@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
@@ -60,5 +60,32 @@ describe('Rule Consolidator Engine', () => {
     const inspection = await inspectProjectRules(tempDir);
     const claudeTarget = inspection.targets.find((t) => t.fileName === 'CLAUDE.md');
     expect(claudeTarget?.status).toBe('synced');
+  });
+
+  it('syncProjectRules({ mode: "symlink" }) reports "hardlinked" (not "symlinked") when the platform falls back to a hardlink', async () => {
+    // Companion to the createCrossPlatformLink() test in fs.test.ts, at the
+    // rules.ts call-site level: --mode symlink must never claim
+    // 'Symlinked to source' for a link that is actually a hardlink, since
+    // README promises symlink mode keeps files in sync automatically and a
+    // hardlink can silently go stale (see fs.test.ts for the exact
+    // reproduction).
+    const agentsMd = path.join(tempDir, 'AGENTS.md');
+    await fsp.writeFile(agentsMd, '# Core Rules\n1. Always test code.', 'utf-8');
+
+    const symlinkSpy = vi.spyOn(fsp, 'symlink').mockRejectedValue(
+      Object.assign(new Error('EPERM: operation not permitted, symlink'), { code: 'EPERM' })
+    );
+
+    try {
+      const result = await syncProjectRules(tempDir, { mode: 'symlink' });
+      const claudeResult = result.targets.find((t) => t.fileName === 'CLAUDE.md');
+      expect(claudeResult?.action).toBe('hardlinked');
+
+      const claudeMd = path.join(tempDir, 'CLAUDE.md');
+      expect(await pathExists(claudeMd)).toBe(true);
+      expect(await fsp.readFile(claudeMd, 'utf-8')).toContain('# Core Rules');
+    } finally {
+      symlinkSpy.mockRestore();
+    }
   });
 });

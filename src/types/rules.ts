@@ -18,7 +18,7 @@ export interface RuleSyncResult {
   targets: Array<{
     fileName: string;
     filePath: string;
-    action: 'created' | 'updated' | 'symlinked' | 'skipped' | 'failed';
+    action: 'created' | 'updated' | 'symlinked' | 'hardlinked' | 'skipped' | 'failed';
     error?: string;
   }>;
 }
