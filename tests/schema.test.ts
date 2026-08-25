@@ -128,7 +128,7 @@ Follow these steps...`;
   });
 
   it('round-trips ${VAR} through interpolateEnvString and back via redactEnvValue', () => {
-    const varName = 'AGENTSYNC_SCHEMA_TEST_VAR';
+    const varName = 'AGENTBRIDGE_SCHEMA_TEST_VAR';
     const original = process.env[varName];
     process.env[varName] = 'resolved-secret-value';
 
@@ -152,7 +152,7 @@ Follow these steps...`;
   });
 
   it('leaves interpolateEnvString references unresolved when the env var is unset', () => {
-    const varName = 'AGENTSYNC_SCHEMA_TEST_UNSET_VAR';
+    const varName = 'AGENTBRIDGE_SCHEMA_TEST_UNSET_VAR';
     delete process.env[varName];
     expect(interpolateEnvString(`\${${varName}}`)).toBe(`\${${varName}}`);
   });

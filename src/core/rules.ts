@@ -128,7 +128,7 @@ Welcome to the AI Agent Guide for ${projectName}. This file acts as the universa
     // does NOT queue and retry later, so silently returning agentsMdPath
     // here would tell the caller a file was created that never was.
     throw new Error(
-      `Could not create AGENTS.md at ${agentsMdPath}: another agentsync process is currently modifying configs. Try again in a moment.`
+      `Could not create AGENTS.md at ${agentsMdPath}: another agentbridge process is currently modifying configs. Try again in a moment.`
     );
   }
   return agentsMdPath;
@@ -190,7 +190,7 @@ export async function syncProjectRules(
           );
           if (wrote === null) {
             throw new Error(
-              'Another agentsync process is currently modifying configs. Try again in a moment.'
+              'Another agentbridge process is currently modifying configs. Try again in a moment.'
             );
           }
           results.push({
@@ -215,7 +215,7 @@ export async function syncProjectRules(
         );
         if (wrote === null) {
           throw new Error(
-            'Another agentsync process is currently modifying configs. Try again in a moment.'
+            'Another agentbridge process is currently modifying configs. Try again in a moment.'
           );
         }
         results.push({

@@ -14,7 +14,7 @@ import { ensureDir, safeWriteJson } from '../src/utils/fs.js';
 import type { DetectedAgent } from '../src/types/client.js';
 
 describe('Transactional Multi-Agent Rollback Suite', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-trans-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-trans-test-${Date.now()}`);
 
   beforeEach(async () => {
     await ensureDir(tempDir);

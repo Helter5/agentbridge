@@ -228,7 +228,7 @@ export function detectPotentialSecrets(
   if (!value || typeof value !== 'string') return { hasSecret: false };
 
   // Explicit ignore list or marker
-  if (value.includes('agentsync-ignore-secret') || value.includes('// ignore-secret')) {
+  if (value.includes('agentbridge-ignore-secret') || value.includes('// ignore-secret')) {
     return { hasSecret: false };
   }
 

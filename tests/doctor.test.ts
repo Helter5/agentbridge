@@ -6,7 +6,7 @@ import { runDiagnostics } from '../src/core/doctor.js';
 import { ensureDir } from '../src/utils/fs.js';
 
 describe('Doctor & Health Diagnostics Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-doctor-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-doctor-test-${Date.now()}`);
   const tempHub = path.join(tempDir, 'hub');
 
   beforeEach(async () => {

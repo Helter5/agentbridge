@@ -117,7 +117,7 @@ export async function collectMcpServers(
         if (isUnsafeObjectKey(name)) continue;
         if (validateMCPServerConfig(config).isValid) {
           mergedServers[name] = { ...config };
-          serverSources[name] = ['AgentSync Hub'];
+          serverSources[name] = ['AgentBridge Hub'];
         }
       }
     }

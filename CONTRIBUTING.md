@@ -1,12 +1,12 @@
-# Contributing to AgentSync
+# Contributing to AgentBridge
 
-Guidelines and architectural context for contributing to **AgentSync**.
+Guidelines and architectural context for contributing to **AgentBridge**.
 
 ---
 
 ## Architecture: Core Engines
 
-AgentSync is organized into modular TypeScript engines in `src/core/`:
+AgentBridge is organized into modular TypeScript engines in `src/core/`:
 
 ```
 src/
@@ -41,8 +41,8 @@ src/
 ### 2. Setup
 ```bash
 # Clone the repository
-git clone https://github.com/Helter5/agentsync.git
-cd agentsync
+git clone https://github.com/Helter5/agentbridge.git
+cd agentbridge
 
 # Install dependencies
 npm install
