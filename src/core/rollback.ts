@@ -6,7 +6,12 @@ import {
   pathExists,
   safeReadJson,
   safeWriteJson,
+  chmodBestEffort,
+  withLock,
 } from '../utils/fs.js';
+import { DEFAULT_LOCK_PATH } from '../constants.js';
+
+const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 
 export interface BackupSnapshot {
   id: string;
@@ -55,7 +60,9 @@ export async function createBackupSnapshot(
   };
 
   const snapshotFile = path.join(backupsDir, `${id}.json`);
-  await safeWriteJson(snapshotFile, snapshot);
+  await withLock(lockFilePath, async () => {
+    await safeWriteJson(snapshotFile, snapshot);
+  });
   return snapshot;
 }
 
@@ -119,7 +126,8 @@ export async function restoreBackupSnapshot(snapshotId: string): Promise<Rollbac
   for (const [filePath, content] of Object.entries(snapshot.files)) {
     try {
       await ensureDir(path.dirname(filePath));
-      await fsp.writeFile(filePath, content, 'utf-8');
+      await fsp.writeFile(filePath, content, { encoding: 'utf-8', mode: 0o600 });
+      await chmodBestEffort(filePath, 0o600);
       restoredFiles.push(filePath);
     } catch (err: any) {
       failedFiles.push({
@@ -146,26 +154,34 @@ export async function restoreBackupSnapshot(snapshotId: string): Promise<Rollbac
  */
 export async function pruneBackupSnapshots(maxSnapshots = 20): Promise<number> {
   const backupsDir = getBackupsDirectory();
-  const snapshots = await listBackupSnapshots();
 
-  if (snapshots.length <= maxSnapshots) {
-    return 0;
-  }
+  // List + delete run under the same lockfile that guards snapshot creation,
+  // so a concurrent createBackupSnapshot() / watch cycle can't race the
+  // read-then-unlink sequence below.
+  const result = await withLock(lockFilePath, async () => {
+    const snapshots = await listBackupSnapshots();
 
-  const toDelete = snapshots.slice(maxSnapshots);
-  let deletedCount = 0;
-
-  for (const snap of toDelete) {
-    const snapFile = path.join(backupsDir, `${snap.id}.json`);
-    try {
-      await fsp.unlink(snapFile);
-      deletedCount++;
-    } catch {
-      // Ignore
+    if (snapshots.length <= maxSnapshots) {
+      return 0;
     }
-  }
 
-  return deletedCount;
+    const toDelete = snapshots.slice(maxSnapshots);
+    let deletedCount = 0;
+
+    for (const snap of toDelete) {
+      const snapFile = path.join(backupsDir, `${snap.id}.json`);
+      try {
+        await fsp.unlink(snapFile);
+        deletedCount++;
+      } catch {
+        // Ignore
+      }
+    }
+
+    return deletedCount;
+  });
+
+  return result ?? 0;
 }
 
 /**
@@ -185,11 +201,21 @@ export async function executeTransactionalOperation<T>(
     return result;
   } catch (operationError: any) {
     // Transaction failed -> trigger automated multi-agent rollback!
+    const operationMessage = operationError.message || String(operationError);
+
     if (snapshot) {
-      await restoreBackupSnapshot(snapshot.id);
+      const rollbackResult = await restoreBackupSnapshot(snapshot.id);
+      if (rollbackResult.failedFiles.length > 0) {
+        throw new Error(
+          `Transactional sync failed: ${operationMessage}. Rollback ALSO failed to restore ${rollbackResult.failedFiles.length} file(s): ${rollbackResult.failedFiles
+            .map((f) => `${f.path} (${f.error})`)
+            .join('; ')}. Agent configs may be left in a partially-modified state - restore manually from snapshot ${snapshot.id}.`
+        );
+      }
     }
+
     throw new Error(
-      `Transactional sync failed: ${operationError.message || String(operationError)}. Automatically rolled back all agent configs to pre-operation state.`
+      `Transactional sync failed: ${operationMessage}. Automatically rolled back all agent configs to pre-operation state.`
     );
   }
 }
