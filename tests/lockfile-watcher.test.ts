@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
@@ -22,6 +22,43 @@ describe('Lockfile and Concurrency Engine', () => {
     // Completely nonexistent PID must be dead
     expect(isProcessAlive(99999999)).toBe(false);
     expect(isProcessAlive(-1)).toBe(false);
+  });
+
+  it('classifies process.kill errors correctly: ESRCH dead, EPERM/unknown alive', () => {
+    const originalKill = process.kill;
+
+    try {
+      // ESRCH ("no such process") -> genuinely dead.
+      process.kill = ((_pid: number, _signal?: string | number) => {
+        const err: any = new Error('No such process');
+        err.code = 'ESRCH';
+        throw err;
+      }) as typeof process.kill;
+      expect(isProcessAlive(12345)).toBe(false);
+
+      // EPERM (process exists, no permission to signal it) -> alive.
+      process.kill = ((_pid: number, _signal?: string | number) => {
+        const err: any = new Error('Operation not permitted');
+        err.code = 'EPERM';
+        throw err;
+      }) as typeof process.kill;
+      expect(isProcessAlive(12345)).toBe(true);
+
+      // An unexpected/unknown error code -> conservatively treated as
+      // alive, so a stale-lock check never steals a lock it can't prove
+      // is actually abandoned.
+      process.kill = ((_pid: number, _signal?: string | number) => {
+        const err: any = new Error('Something unexpected');
+        err.code = 'EWEIRD';
+        throw err;
+      }) as typeof process.kill;
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      expect(isProcessAlive(12345)).toBe(true);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    } finally {
+      process.kill = originalKill;
+    }
   });
 
   it('acquires lock and blocks concurrent parallel operations', async () => {

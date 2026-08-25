@@ -271,7 +271,9 @@ export async function createCrossPlatformLink(
 }
 
 /**
- * Checks if a process with the given PID is currently active
+ * Checks if a process with the given PID is currently active.
+ * process.kill(pid, 0) sends no actual signal - it's a Node/libuv
+ * cross-platform existence probe (works on Windows too, not just POSIX).
  */
 export function isProcessAlive(pid: number): boolean {
   if (!pid || pid <= 0) return false;
@@ -279,7 +281,20 @@ export function isProcessAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err: any) {
-    return err.code === 'EPERM';
+    if (err.code === 'ESRCH') {
+      // No such process - genuinely dead.
+      return false;
+    }
+    if (err.code === 'EPERM' || err.code === 'EACCES') {
+      // Process exists but we lack permission to signal it - still alive.
+      return true;
+    }
+    // Unknown/unexpected error: don't assume the process is dead, since
+    // acquireLock() uses this result to decide whether to steal another
+    // process's lockfile. Log it and err on the side of "alive" so we
+    // don't clear a lock that's still legitimately held.
+    console.error(`isProcessAlive: unexpected error checking pid ${pid}:`, err);
+    return true;
   }
 }
 
