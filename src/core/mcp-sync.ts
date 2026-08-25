@@ -27,6 +27,17 @@ export interface MCPSyncOptions {
 }
 
 /**
+ * MCP server names come straight from JSON.parse()'d agent config files
+ * (see safeReadJson). Assigning into a plain object with obj[name] = ...
+ * where name is "__proto__" invokes Object.prototype's __proto__ setter
+ * and reassigns that object's own prototype - reject those keys before
+ * any such assignment.
+ */
+function isUnsafeObjectKey(key: string): boolean {
+  return key === '__proto__' || key === 'constructor' || key === 'prototype';
+}
+
+/**
  * Deep-merges individual MCP Server configurations
  */
 export function mergeServerConfig(
@@ -75,6 +86,7 @@ function redactServerConfigsEnv(
 ): Record<string, MCPServerConfig> {
   const redacted: Record<string, MCPServerConfig> = {};
   for (const [name, config] of Object.entries(servers)) {
+    if (isUnsafeObjectKey(name)) continue;
     redacted[name] = config.env ? { ...config, env: redactEnvRecord(config.env) } : config;
   }
   return redacted;
@@ -102,6 +114,7 @@ export async function collectMcpServers(
     const hubContent = await safeReadJson<MCPConfigFile>(masterHubPath);
     if (hubContent?.mcpServers && typeof hubContent.mcpServers === 'object') {
       for (const [name, config] of Object.entries(hubContent.mcpServers)) {
+        if (isUnsafeObjectKey(name)) continue;
         if (validateMCPServerConfig(config).isValid) {
           mergedServers[name] = { ...config };
           serverSources[name] = ['AgentSync Hub'];
@@ -122,6 +135,7 @@ export async function collectMcpServers(
     }
 
     for (const [serverName, config] of Object.entries(fileContent.mcpServers)) {
+      if (isUnsafeObjectKey(serverName)) continue;
       const validation = validateMCPServerConfig(config);
       if (!validation.isValid) continue;
 

@@ -3,7 +3,6 @@ import fsp from 'node:fs/promises';
 import {
   pathExists,
   isSymlinkOrJunction,
-  readLinkTarget,
   createCrossPlatformLink,
   ensureDir,
   withLock,

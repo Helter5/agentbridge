@@ -1,6 +1,6 @@
 # AgentSync
 
-[![CI](https://github.com/agentsync-dev/agentsync/actions/workflows/ci.yml/badge.svg)](https://github.com/agentsync-dev/agentsync/actions/workflows/ci.yml)
+[![CI](https://github.com/Helter5/agentsync/actions/workflows/ci.yml/badge.svg)](https://github.com/Helter5/agentsync/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/agentsync.svg?style=flat&color=3b82f6)](https://www.npmjs.com/package/agentsync)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
