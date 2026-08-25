@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expandHome, pathExists, withLock } from '../utils/fs.js';
+import { pathExists, withLock, resolveSharedLockPath } from '../utils/fs.js';
 import { getHubSkillsPath } from './skill-linker.js';
 import { syncProjectRules } from './rules.js';
-import { DEFAULT_LOCK_PATH } from '../constants.js';
 
 export interface WatcherOptions {
   hubPath?: string;
@@ -23,7 +22,7 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
   const hubSkillsPath = getHubSkillsPath(options.hubPath);
   const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
   const debounceDelay = options.debounceMs || 300;
-  const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
+  const lockFilePath = resolveSharedLockPath();
 
   const watchers: fs.FSWatcher[] = [];
   // Each timer debounces per watched target (the whole skills directory /

@@ -8,8 +8,7 @@ import {
   restoreBackupSnapshot,
   getBackupsDirectory,
 } from '../src/core/rollback.js';
-import { ensureDir, pathExists, acquireLock, expandHome } from '../src/utils/fs.js';
-import { DEFAULT_LOCK_PATH } from '../src/constants.js';
+import { ensureDir, pathExists, acquireLock } from '../src/utils/fs.js';
 
 describe('Rollback & Snapshot Engine', () => {
   const tempDir = path.join(os.tmpdir(), `agentsync-rollback-test-${Date.now()}`);
@@ -44,45 +43,62 @@ describe('Rollback & Snapshot Engine', () => {
   });
 
   it('createBackupSnapshot() retries past a concurrently-held shared lock instead of silently skipping the write', async () => {
-    // createBackupSnapshot() locks on the same real, shared lockfile every
-    // agentsync writer uses (see DEFAULT_LOCK_PATH / withLock in
-    // rules.ts, skill-linker.ts, this module). Hold that exact lock
+    // createBackupSnapshot() locks on the same shared lockfile every
+    // agentsync writer uses (resolveSharedLockPath() in utils/fs.ts).
+    // AGENTSYNC_LOCK_PATH points that at an isolated tmpdir file for this
+    // test instead of the real ~/.agentsync/.lock, so this test can't
+    // collide with an agentsync command a developer happens to be running
+    // in another terminal while the suite executes. Hold that lock
     // externally - simulating a watcher mid-write - and prove
     // createBackupSnapshot() waits it out and actually persists the
     // snapshot to disk, rather than the pre-fix behavior of returning a
     // "snapshot" object that was never written because the lock was busy.
-    const sharedLockPath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
-    const heldLock = await acquireLock(sharedLockPath);
-    expect(heldLock.acquired).toBe(true);
+    const isolatedLockPath = path.join(tempDir, 'test.lock');
+    const originalLockPathEnv = process.env.AGENTSYNC_LOCK_PATH;
+    process.env.AGENTSYNC_LOCK_PATH = isolatedLockPath;
 
-    const testFile = path.join(tempDir, 'concurrent-config.json');
-    await fsp.writeFile(testFile, JSON.stringify({ state: 'held-lock-v1' }), 'utf-8');
-
-    // Free the shared lock partway through createBackupSnapshot()'s retry
-    // window (3000ms), simulating the watcher finishing its own brief write.
-    const releaseTimer = setTimeout(() => {
-      heldLock.release();
-    }, 300);
-
-    let snapshot;
     try {
-      snapshot = await createBackupSnapshot('Concurrent-lock test backup', [testFile]);
+      const heldLock = await acquireLock(isolatedLockPath);
+      expect(heldLock.acquired).toBe(true);
+
+      const testFile = path.join(tempDir, 'concurrent-config.json');
+      await fsp.writeFile(testFile, JSON.stringify({ state: 'held-lock-v1' }), 'utf-8');
+
+      // Free the lock partway through createBackupSnapshot()'s retry
+      // window (3000ms), simulating the watcher finishing its own brief write.
+      const releaseTimer = setTimeout(() => {
+        heldLock.release();
+      }, 300);
+
+      let snapshot;
+      try {
+        snapshot = await createBackupSnapshot('Concurrent-lock test backup', [testFile]);
+      } finally {
+        clearTimeout(releaseTimer);
+        await heldLock.release().catch(() => {});
+      }
+
+      expect(snapshot).not.toBeNull();
+      // The whole point: the snapshot must actually be on disk, not just an
+      // in-memory object handed back after a skipped write.
+      const backupsDir = getBackupsDirectory();
+      const snapshotFile = path.join(backupsDir, `${snapshot!.id}.json`);
+      expect(await pathExists(snapshotFile)).toBe(true);
+
+      // Clean up the snapshot file this test wrote to the (real) shared
+      // backups directory - don't leave test artifacts in the user's
+      // ~/.agentsync/backups. Only the lockfile itself is isolated by
+      // AGENTSYNC_LOCK_PATH; the backups directory is a separate,
+      // non-contended path (concurrent writers there don't race the way
+      // a mutex lockfile does), so it's out of scope for this fix.
+      await fsp.unlink(snapshotFile).catch(() => {});
     } finally {
-      clearTimeout(releaseTimer);
-      await heldLock.release().catch(() => {});
+      if (originalLockPathEnv === undefined) {
+        delete process.env.AGENTSYNC_LOCK_PATH;
+      } else {
+        process.env.AGENTSYNC_LOCK_PATH = originalLockPathEnv;
+      }
     }
-
-    expect(snapshot).not.toBeNull();
-    // The whole point: the snapshot must actually be on disk, not just an
-    // in-memory object handed back after a skipped write.
-    const backupsDir = getBackupsDirectory();
-    const snapshotFile = path.join(backupsDir, `${snapshot!.id}.json`);
-    expect(await pathExists(snapshotFile)).toBe(true);
-
-    // Clean up the real snapshot file this test wrote to the shared
-    // backups directory - don't leave test artifacts in the user's
-    // ~/.agentsync/backups.
-    await fsp.unlink(snapshotFile).catch(() => {});
   }, 6000);
 });
 
