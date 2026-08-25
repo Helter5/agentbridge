@@ -488,6 +488,7 @@ export async function selectivelyImportSkills(
 
   const importedSkills: string[] = [];
   const failedSkills: Array<{ name: string; error: string }> = [];
+  const warnings: Array<{ name: string; message: string }> = [];
 
   for (const skill of skillsToImport) {
     let destDir: string;
@@ -545,6 +546,17 @@ export async function selectivelyImportSkills(
             description: skill.description,
             instructions: parsed.content,
           });
+          if (parsed.hadInvalidFrontmatterBlock) {
+            // Distinct from "no frontmatter block at all" (a normal, silent
+            // case for a plain markdown note) - here the file had a
+            // `---`-delimited block that failed to parse as YAML. The
+            // regenerated header only carries name/description; anything
+            // else the original had (version, tags, custom fields) is gone.
+            warnings.push({
+              name: skill.name,
+              message: `'${skill.sourcePath}' had a frontmatter block with invalid YAML - it was replaced with a minimal regenerated header (name/description only); any other original fields were lost.`,
+            });
+          }
         }
         const wrote = await withLock(
           resolveSharedLockPath(),
@@ -575,6 +587,7 @@ export async function selectivelyImportSkills(
     importedSkills,
     failedSkills,
     targetPath: absTarget,
+    warnings,
   };
 }
 

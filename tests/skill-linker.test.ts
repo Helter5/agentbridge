@@ -323,6 +323,75 @@ describe('Skill Linking Engine', () => {
     expect(finalContent).not.toContain('ORIGINAL_A_CONTENT_MARKER');
   });
 
+  it('selectivelyImportSkills() imports a markdown_file skill with malformed YAML frontmatter, but reports a warning (not a plain silent success)', async () => {
+    // Same silent-data-loss shape as the sync-mcp corrupt-JSON bug: a
+    // `---`-delimited frontmatter block that fails to parse falls back to
+    // regenerating a fresh header from name/description, discarding
+    // whatever other fields (version, tags, custom fields) the original
+    // had - without this warning, that would happen with no indication
+    // to the user at all, identical to a normal successful import.
+    const sourceBroken = path.join(tempDir, 'source-broken.md');
+    await fsp.writeFile(
+      sourceBroken,
+      `---\nname: broken-skill\ndescription: [this is not, valid: yaml: at: all\n---\n\nBODY_MUST_SURVIVE_MARKER\n`,
+      'utf-8'
+    );
+
+    const importTarget = path.join(tempDir, 'import-target-broken-frontmatter');
+    await ensureDir(importTarget);
+
+    const skill: DiscoveredSkill = {
+      id: 'agent-a:broken-skill',
+      name: 'broken-skill',
+      agentId: 'agent-a',
+      agentName: 'Agent A',
+      description: 'A skill with malformed frontmatter',
+      sourcePath: sourceBroken,
+      type: 'markdown_file',
+    };
+
+    const result = await selectivelyImportSkills([skill], importTarget);
+    expect(result.failedSkills).toEqual([]);
+    expect(result.importedSkills).toEqual(['broken-skill']);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0].name).toBe('broken-skill');
+    expect(result.warnings[0].message).toContain('invalid YAML');
+
+    // Body content survives; frontmatter got a fresh, valid regenerated
+    // header instead of carrying over the broken YAML.
+    const skillFilePath = path.join(importTarget, 'broken-skill', 'SKILL.md');
+    const finalContent = await fsp.readFile(skillFilePath, 'utf-8');
+    expect(finalContent).toContain('BODY_MUST_SURVIVE_MARKER');
+    expect(finalContent).toContain('name: broken-skill');
+  });
+
+  it('selectivelyImportSkills() reports no warning for a markdown_file skill with no frontmatter block at all (the normal case)', async () => {
+    // Control case: a plain markdown note with no `---` delimiters is NOT
+    // an error, and must not trip the same warning as genuinely malformed
+    // YAML (see parseFrontmatter's hadInvalidFrontmatterBlock distinction
+    // in schema.test.ts).
+    const sourcePlain = path.join(tempDir, 'source-plain.md');
+    await fsp.writeFile(sourcePlain, `# Just a plain note\n\nNo frontmatter here.\n`, 'utf-8');
+
+    const importTarget = path.join(tempDir, 'import-target-plain');
+    await ensureDir(importTarget);
+
+    const skill: DiscoveredSkill = {
+      id: 'agent-a:plain-skill',
+      name: 'plain-skill',
+      agentId: 'agent-a',
+      agentName: 'Agent A',
+      description: 'A plain skill with no frontmatter',
+      sourcePath: sourcePlain,
+      type: 'markdown_file',
+    };
+
+    const result = await selectivelyImportSkills([skill], importTarget);
+    expect(result.failedSkills).toEqual([]);
+    expect(result.importedSkills).toEqual(['plain-skill']);
+    expect(result.warnings).toEqual([]);
+  });
+
   it('selectivelyImportSkills() reports a failure (not a false "Imported" success) for a directory-type skill whose sanitized name collides with an already-imported one, without overwrite', async () => {
     // Found via manual UX testing (not unit-test-only inspection): the
     // markdown_file branch above got an explicit collision check for
