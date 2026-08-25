@@ -6,18 +6,15 @@ import {
   createCrossPlatformLink,
   ensureDir,
   withLock,
-  expandHome,
+  resolveSharedLockPath,
 } from '../utils/fs.js';
 import type { RuleTarget, RuleSyncResult, RuleTargetType } from '../types/rules.js';
 import {
   RULE_TARGET_FILES,
   AUTO_GENERATED_HEADER,
   RULE_SOURCE_CANDIDATES,
-  DEFAULT_LOCK_PATH,
   LOCK_RETRY_MAX_WAIT_MS,
 } from '../constants.js';
-
-const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 
 export { RULE_TARGET_FILES, AUTO_GENERATED_HEADER, RULE_SOURCE_CANDIDATES };
 
@@ -119,7 +116,7 @@ Welcome to the AI Agent Guide for ${projectName}. This file acts as the universa
 `;
 
   const wrote = await withLock(
-    lockFilePath,
+    resolveSharedLockPath(),
     async () => {
       await ensureDir(path.dirname(agentsMdPath));
       await fsp.writeFile(agentsMdPath, defaultContent, 'utf-8');
@@ -185,7 +182,7 @@ export async function syncProjectRules(
           // Fallback to copy
           const contentToWrite = `${AUTO_GENERATED_HEADER}${sourceContent}`;
           const wrote = await withLock(
-            lockFilePath,
+            resolveSharedLockPath(),
             async () => {
               await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
             },
@@ -206,7 +203,7 @@ export async function syncProjectRules(
         // Copy mode
         const contentToWrite = `${AUTO_GENERATED_HEADER}${sourceContent}`;
         const wrote = await withLock(
-          lockFilePath,
+          resolveSharedLockPath(),
           async () => {
             const isLink = await isSymlinkOrJunction(targetPath);
             if (isLink) {

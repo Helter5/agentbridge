@@ -11,13 +11,12 @@ import {
   backupPath,
   removeLinkOrDir,
   withLock,
+  resolveSharedLockPath,
 } from '../utils/fs.js';
 import { parseFrontmatter, validateSkillFrontmatter } from '../utils/schema.js';
 import { generateSkillMarkdown, type CreateSkillTemplateOptions } from '../templates/skill.template.js';
 import { DEFAULT_HUB_SKILLS_PATH } from './detector.js';
-import { DEFAULT_LOCK_PATH, LOCK_RETRY_MAX_WAIT_MS } from '../constants.js';
-
-const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
+import { LOCK_RETRY_MAX_WAIT_MS } from '../constants.js';
 import type { DetectedAgent } from '../types/client.js';
 import type {
   SkillManifest,
@@ -339,7 +338,7 @@ export async function createNewSkill(
   });
 
   const wrote = await withLock(
-    lockFilePath,
+    resolveSharedLockPath(),
     async () => {
       await fsp.writeFile(skillFile, markdown, 'utf-8');
     },
@@ -517,7 +516,7 @@ export async function selectivelyImportSkills(
           });
         }
         const wrote = await withLock(
-          lockFilePath,
+          resolveSharedLockPath(),
           async () => {
             await fsp.writeFile(skillFilePath, finalContent, 'utf-8');
           },
