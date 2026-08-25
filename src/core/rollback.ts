@@ -19,8 +19,20 @@ export interface BackupSnapshot {
   files: Record<string, string>; // path -> content
 }
 
+/**
+ * Resolves the backup snapshots directory at the point of use (not a
+ * frozen module-level constant - same reasoning as resolveSharedLockPath()
+ * in utils/fs.ts). Honors AGENTBRIDGE_BACKUPS_DIR so tests can point it at
+ * an isolated tmpdir instead of the real ~/.agentbridge/backups.
+ *
+ * Before this override existed, every test exercising createBackupSnapshot()
+ * (rollback.test.ts, transactional-rollback.test.ts, mcp-sync.test.ts) wrote
+ * real snapshot files into the developer's actual ~/.agentbridge/backups on
+ * every `npm test` run, with no way to clean most of them up (only the one
+ * test that already knew its own snapshot id did).
+ */
 export function getBackupsDirectory(): string {
-  return path.resolve(expandHome('~/.agentbridge/backups'));
+  return path.resolve(expandHome(process.env.AGENTBRIDGE_BACKUPS_DIR || '~/.agentbridge/backups'));
 }
 
 /**
