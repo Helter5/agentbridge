@@ -43,6 +43,32 @@ describe('Skill Linking Engine', () => {
     expect(res.manifest.frontmatter.author).toBe('Test Author');
   });
 
+  it('createNewSkill() refuses to overwrite an already-existing skill (LOW-004)', async () => {
+    await createNewSkill('docker-helper', {
+      description: 'Original description',
+      author: 'Original Author',
+      hubPath: tempHub,
+    });
+
+    const skillFile = path.join(tempHub, 'docker-helper', 'SKILL.md');
+    const originalContent = await fsp.readFile(skillFile, 'utf-8');
+    expect(originalContent).toContain('Original description');
+
+    // Calling it again with the same (sanitized) name, no overwrite
+    // mechanism exists on add-skill - must fail, not silently replace.
+    await expect(
+      createNewSkill('docker-helper', {
+        description: 'A different, colliding description',
+        author: 'Different Author',
+        hubPath: tempHub,
+      })
+    ).rejects.toThrow('already exists');
+
+    const contentAfterCollision = await fsp.readFile(skillFile, 'utf-8');
+    expect(contentAfterCollision).toBe(originalContent);
+    expect(contentAfterCollision).not.toContain('A different, colliding description');
+  });
+
   it('lists skills in directory with metadata', async () => {
     await createNewSkill('skill-a', {
       description: 'Skill A description',

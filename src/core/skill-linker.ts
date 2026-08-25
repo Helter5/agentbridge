@@ -319,6 +319,16 @@ export async function createNewSkill(
   await ensureDir(skillDir);
 
   const skillFile = path.join(skillDir, 'SKILL.md');
+  // Same collision risk as MEDIUM-002 (selectivelyImportSkills): sanitizedName
+  // can match an already-existing skill (typed again, or a differently-typed
+  // name that happens to sanitize the same way). There's no --overwrite flag
+  // on `add-skill` yet, so an existing skill is never silently replaced -
+  // fail with a clear error instead.
+  if (await pathExists(skillFile)) {
+    throw new Error(
+      `Skill '${sanitizedName}' already exists at ${skillFile} - skill already exists, refusing to overwrite it.`
+    );
+  }
   const markdown = generateSkillMarkdown({
     name: sanitizedName,
     description: options.description || `Custom skill for ${name}`,
