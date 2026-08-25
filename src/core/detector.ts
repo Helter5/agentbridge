@@ -38,13 +38,18 @@ async function countSkillsInDir(skillsDir: string): Promise<number> {
     let count = 0;
     for (const entry of entries) {
       if (entry.isDirectory()) {
+        // Only a directory that actually contains SKILL.md is a skill -
+        // both branches here used to increment unconditionally, so any
+        // unrelated subdirectory (a broken partial copy, .git, an empty
+        // folder) was counted as a skill too.
         const skillMd = path.join(skillsDir, entry.name, 'SKILL.md');
         if (await pathExists(skillMd)) {
           count++;
-        } else {
-          count++;
         }
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
+        // Standalone markdown_file-type skills (a loose .md file directly
+        // in the skills dir, not wrapped in its own folder) - unaffected
+        // by the directory-only fix above.
         count++;
       }
     }

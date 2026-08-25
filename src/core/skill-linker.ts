@@ -376,6 +376,17 @@ export async function createNewSkill(
   name: string,
   options: Partial<CreateSkillTemplateOptions> & { hubPath?: string } = {}
 ): Promise<{ skillPath: string; manifest: SkillManifest }> {
+  // An empty/whitespace-only name used to fall through silently to
+  // sanitizeSkillDirName()'s generic 'unnamed-skill' fallback - the skill
+  // still got created, but every confirmation message echoed the original
+  // empty string back ("Skill '' is now active..."), never mentioning the
+  // real name actually used. add-skill already refuses other invalid
+  // input outright (a colliding name, a path-traversal attempt) rather
+  // than silently substituting something else - this matches that.
+  if (!name || !name.trim()) {
+    throw new Error('Skill name cannot be empty.');
+  }
+
   const absHub = getHubSkillsPath(options.hubPath);
   await ensureDir(absHub);
 

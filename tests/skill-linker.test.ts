@@ -69,6 +69,27 @@ describe('Skill Linking Engine', () => {
     expect(contentAfterCollision).not.toContain('A different, colliding description');
   });
 
+  it('createNewSkill() rejects an empty/whitespace-only name with a clear error instead of silently falling back to "unnamed-skill"', async () => {
+    // Found via manual testing: sanitizeSkillDirName('') falls back to
+    // 'unnamed-skill' by design (used elsewhere, e.g. pick's collision
+    // handling, where a fallback is the right call for a name that can't
+    // be helped). But add-skill's name comes directly from what the user
+    // typed - silently substituting a different name meant the skill got
+    // created while every confirmation message still echoed back the
+    // original empty string, never mentioning the real name used. Matches
+    // how add-skill already refuses other invalid input (a colliding
+    // name, above) rather than silently substituting something else.
+    await expect(createNewSkill('', { description: 'd', hubPath: tempHub })).rejects.toThrow(
+      'Skill name cannot be empty'
+    );
+    await expect(createNewSkill('   ', { description: 'd', hubPath: tempHub })).rejects.toThrow(
+      'Skill name cannot be empty'
+    );
+
+    const unnamedFallbackPath = path.join(tempHub, 'unnamed-skill');
+    expect(await pathExists(unnamedFallbackPath)).toBe(false);
+  });
+
   it('lists skills in directory with metadata', async () => {
     await createNewSkill('skill-a', {
       description: 'Skill A description',
