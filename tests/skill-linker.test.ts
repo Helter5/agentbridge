@@ -323,6 +323,122 @@ describe('Skill Linking Engine', () => {
     expect(finalContent).not.toContain('ORIGINAL_A_CONTENT_MARKER');
   });
 
+  it('selectivelyImportSkills() reports a failure (not a false "Imported" success) for a directory-type skill whose sanitized name collides with an already-imported one, without overwrite', async () => {
+    // Found via manual UX testing (not unit-test-only inspection): the
+    // markdown_file branch above got an explicit collision check for
+    // MEDIUM-002, but the directory branch called copyDirRecursive()
+    // directly. copyDirRecursive(..., overwrite=false) only skips
+    // individual files that already exist - it never surfaces a top-level
+    // failure - so the second colliding skill was reported to the user as
+    // "Imported" success while none of its files were actually written.
+    const sourceDirA = path.join(tempDir, 'dir-source-a');
+    await ensureDir(sourceDirA);
+    await fsp.writeFile(
+      path.join(sourceDirA, 'SKILL.md'),
+      `---\nname: my-dir-skill\ndescription: original dir skill A\n---\n\nORIGINAL_DIR_A_MARKER\n`,
+      'utf-8'
+    );
+
+    const sourceDirB = path.join(tempDir, 'dir-source-b');
+    await ensureDir(sourceDirB);
+    await fsp.writeFile(
+      path.join(sourceDirB, 'SKILL.md'),
+      `---\nname: my-dir-skill\ndescription: colliding dir skill B\n---\n\nDIFFERENT_DIR_B_MARKER\n`,
+      'utf-8'
+    );
+
+    const importTarget = path.join(tempDir, 'import-target-dir-collision');
+    await ensureDir(importTarget);
+
+    const skillA: DiscoveredSkill = {
+      id: 'agent-a:my-dir-skill',
+      name: 'My Dir Skill!!!',
+      agentId: 'agent-a',
+      agentName: 'Agent A',
+      description: 'original dir skill A',
+      sourcePath: sourceDirA,
+      type: 'directory',
+    };
+    const skillB: DiscoveredSkill = {
+      id: 'agent-b:my-dir-skill',
+      name: 'my-dir-skill',
+      agentId: 'agent-b',
+      agentName: 'Agent B',
+      description: 'colliding dir skill B',
+      sourcePath: sourceDirB,
+      type: 'directory',
+    };
+
+    const firstResult = await selectivelyImportSkills([skillA], importTarget);
+    expect(firstResult.failedSkills).toEqual([]);
+    expect(firstResult.importedSkills).toEqual(['My Dir Skill!!!']);
+
+    const skillFilePath = path.join(importTarget, 'my-dir-skill', 'SKILL.md');
+    const contentAfterFirstImport = await fsp.readFile(skillFilePath, 'utf-8');
+    expect(contentAfterFirstImport).toContain('ORIGINAL_DIR_A_MARKER');
+
+    const secondResult = await selectivelyImportSkills([skillB], importTarget);
+    expect(secondResult.importedSkills).toEqual([]);
+    expect(secondResult.failedSkills).toHaveLength(1);
+    expect(secondResult.failedSkills[0].name).toBe('my-dir-skill');
+    expect(secondResult.failedSkills[0].error).toContain('already exists');
+
+    const contentAfterSkippedImport = await fsp.readFile(skillFilePath, 'utf-8');
+    expect(contentAfterSkippedImport).toBe(contentAfterFirstImport);
+    expect(contentAfterSkippedImport).not.toContain('DIFFERENT_DIR_B_MARKER');
+  });
+
+  it('selectivelyImportSkills() overwrites a colliding directory-type skill when options.overwrite is true', async () => {
+    const sourceDirA = path.join(tempDir, 'dir-source-a2');
+    await ensureDir(sourceDirA);
+    await fsp.writeFile(
+      path.join(sourceDirA, 'SKILL.md'),
+      `---\nname: my-dir-skill\ndescription: original dir skill A\n---\n\nORIGINAL_DIR_A_MARKER\n`,
+      'utf-8'
+    );
+
+    const sourceDirB = path.join(tempDir, 'dir-source-b2');
+    await ensureDir(sourceDirB);
+    await fsp.writeFile(
+      path.join(sourceDirB, 'SKILL.md'),
+      `---\nname: my-dir-skill\ndescription: colliding dir skill B\n---\n\nDIFFERENT_DIR_B_MARKER\n`,
+      'utf-8'
+    );
+
+    const importTarget = path.join(tempDir, 'import-target-dir-overwrite');
+    await ensureDir(importTarget);
+
+    const skillA: DiscoveredSkill = {
+      id: 'agent-a:my-dir-skill',
+      name: 'my-dir-skill',
+      agentId: 'agent-a',
+      agentName: 'Agent A',
+      description: 'original dir skill A',
+      sourcePath: sourceDirA,
+      type: 'directory',
+    };
+    const skillB: DiscoveredSkill = {
+      id: 'agent-b:my-dir-skill',
+      name: 'my-dir-skill',
+      agentId: 'agent-b',
+      agentName: 'Agent B',
+      description: 'colliding dir skill B',
+      sourcePath: sourceDirB,
+      type: 'directory',
+    };
+
+    await selectivelyImportSkills([skillA], importTarget);
+
+    const secondResult = await selectivelyImportSkills([skillB], importTarget, { overwrite: true });
+    expect(secondResult.failedSkills).toEqual([]);
+    expect(secondResult.importedSkills).toEqual(['my-dir-skill']);
+
+    const skillFilePath = path.join(importTarget, 'my-dir-skill', 'SKILL.md');
+    const finalContent = await fsp.readFile(skillFilePath, 'utf-8');
+    expect(finalContent).toContain('DIFFERENT_DIR_B_MARKER');
+    expect(finalContent).not.toContain('ORIGINAL_DIR_A_MARKER');
+  });
+
   it('mergeSkillsIntoHub()/linkAgentsToHub() skip a broken (orphaned-target) symlink/junction instead of crashing', async () => {
     // Found via manual end-to-end testing on a real machine, not by
     // inspection: an agent's skillsDir can be a symlink/junction whose
