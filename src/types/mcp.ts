@@ -28,10 +28,20 @@ export interface MCPSyncResult {
   updatedServers: string[];
   totalServers: number;
   error?: string;
+  /**
+   * True when this agent's existing config file had unparseable JSON at
+   * sync time. The sync still proceeds (treating it as if the file were
+   * empty, then backing it up and rewriting it), but callers should
+   * surface this distinctly from a normal success - the file's prior
+   * content (and any of its own MCP servers) was silently dropped from
+   * the merge rather than genuinely absent.
+   */
+  configWasInvalid?: boolean;
 }
 
 export interface MCPSyncSummary {
   mergedServers: Record<string, MCPServerConfig>;
   serverSources: Record<string, string[]>;
   results: MCPSyncResult[];
+  invalidConfigs: { agentId: string; agentName: string; filePath: string }[];
 }

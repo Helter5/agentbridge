@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fsp from 'node:fs/promises';
 import {
   expandHome,
   pathExists,
@@ -35,6 +36,32 @@ export interface MCPSyncOptions {
  */
 function isUnsafeObjectKey(key: string): boolean {
   return key === '__proto__' || key === 'constructor' || key === 'prototype';
+}
+
+/**
+ * Reads and parses a JSON file, distinguishing "file has invalid JSON" from
+ * "file is missing/unreadable". safeReadJson() (utils/fs.ts) collapses both
+ * into a plain null, which is fine for its other callers but hides a real
+ * problem here: a hand-edited agent config with a syntax error (trailing
+ * comma, truncated write, etc.) would otherwise be silently treated as an
+ * empty config and its existing servers dropped from the merge / its file
+ * rewritten from scratch, with no indication to the user that anything was
+ * wrong versus a normal "first sync" of a fresh file.
+ */
+async function readJsonFileWithDiagnostics<T = unknown>(
+  filePath: string
+): Promise<{ data: T | null; invalid: boolean }> {
+  let content: string;
+  try {
+    content = await fsp.readFile(filePath, 'utf-8');
+  } catch {
+    return { data: null, invalid: false };
+  }
+  try {
+    return { data: JSON.parse(content) as T, invalid: false };
+  } catch {
+    return { data: null, invalid: true };
+  }
 }
 
 /**
@@ -102,9 +129,11 @@ export async function collectMcpServers(
   mergedServers: Record<string, MCPServerConfig>;
   serverSources: Record<string, string[]>;
   serverEntries: MCPServerEntry[];
+  invalidConfigs: { agentId: string; agentName: string; filePath: string }[];
 }> {
   const mergedServers: Record<string, MCPServerConfig> = {};
   const serverSources: Record<string, string[]> = {};
+  const invalidConfigs: { agentId: string; agentName: string; filePath: string }[] = [];
 
   // 1. Read master hub registry if present
   const masterHubPath = path.resolve(
@@ -129,7 +158,11 @@ export async function collectMcpServers(
     const filePath = expandHome(agent.paths.mcpConfigFile);
     if (!(await pathExists(filePath))) continue;
 
-    const fileContent = await safeReadJson<MCPConfigFile>(filePath);
+    const { data: fileContent, invalid } = await readJsonFileWithDiagnostics<MCPConfigFile>(filePath);
+    if (invalid) {
+      invalidConfigs.push({ agentId: agent.id, agentName: agent.name, filePath });
+      continue;
+    }
     if (!fileContent || !fileContent.mcpServers || typeof fileContent.mcpServers !== 'object') {
       continue;
     }
@@ -162,7 +195,7 @@ export async function collectMcpServers(
     })
   );
 
-  return { mergedServers, serverSources, serverEntries };
+  return { mergedServers, serverSources, serverEntries, invalidConfigs };
 }
 
 /**
@@ -172,7 +205,7 @@ export async function syncMcpConfigs(
   agents: DetectedAgent[],
   options: MCPSyncOptions = {}
 ): Promise<MCPSyncSummary> {
-  const { mergedServers, serverSources } = await collectMcpServers(agents, {
+  const { mergedServers, serverSources, invalidConfigs } = await collectMcpServers(agents, {
     masterHubPath: options.masterHubPath,
   });
   const results: MCPSyncResult[] = [];
@@ -204,12 +237,20 @@ export async function syncMcpConfigs(
         addedServers: [],
         updatedServers: [],
         totalServers: 0,
+        configWasInvalid: invalidConfigs.some((c) => c.filePath === filePath),
       };
 
       try {
         let existingConfig: MCPConfigFile = {};
         if (await pathExists(filePath)) {
-          existingConfig = (await safeReadJson<MCPConfigFile>(filePath)) || {};
+          // A parse failure here is intentionally treated the same as
+          // "file absent" for the write itself (existingConfig stays {}),
+          // matching prior behavior of not aborting the sync - but
+          // result.configWasInvalid (set above from collectMcpServers'
+          // pass over the same files) lets the caller warn the user
+          // instead of reporting a silent, misleading "success".
+          const { data } = await readJsonFileWithDiagnostics<MCPConfigFile>(filePath);
+          existingConfig = data || {};
         }
 
         const existingServers = existingConfig.mcpServers || {};
@@ -283,5 +324,6 @@ export async function syncMcpConfigs(
     mergedServers,
     serverSources,
     results,
+    invalidConfigs,
   };
 }

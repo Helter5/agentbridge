@@ -259,4 +259,113 @@ describe('MCP Synchronizer Engine', () => {
     // Object.prototype, not the attacker-supplied { command: 'evil', ... }.
     expect(Object.getPrototypeOf(mergedServers)).toBe(Object.prototype);
   });
+
+  it('collectMcpServers() reports an agent config with invalid JSON via invalidConfigs instead of silently dropping it', async () => {
+    const claudeConfigFile = path.join(tempDir, 'claude-corrupt.json');
+    // A hand-edited config with a trailing comma - real-world corruption
+    // (truncated write, manual edit typo), not a crafted attack.
+    await fsp.writeFile(
+      claudeConfigFile,
+      '{"mcpServers":{"demo":{"command":"npx","args":["-y","demo"]},}}',
+      'utf-8'
+    );
+
+    const mockAgents: DetectedAgent[] = [
+      {
+        id: 'claude',
+        name: 'Claude Code',
+        displayName: 'Claude Code',
+        isInstalled: true,
+        paths: {
+          configDir: tempDir,
+          skillsDir: path.join(tempDir, 'skills-corrupt'),
+          mcpConfigFile: claudeConfigFile,
+        },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+    ];
+
+    const isolatedHubMcp = path.join(tempDir, 'isolated-corrupt-hub.json');
+    const { mergedServers, invalidConfigs } = await collectMcpServers(mockAgents, {
+      masterHubPath: isolatedHubMcp,
+    });
+
+    expect(Object.keys(mergedServers)).toEqual([]);
+    expect(invalidConfigs).toEqual([
+      { agentId: 'claude', agentName: 'Claude Code', filePath: claudeConfigFile },
+    ]);
+  });
+
+  it('syncMcpConfigs() flags configWasInvalid (not a plain success) when it resets a corrupt agent config, and backs up the original', async () => {
+    const claudeConfigFile = path.join(tempDir, 'claude-corrupt-sync.json');
+    const originalRaw = '{"mcpServers":{"demo":{"command":"npx","args":["-y","demo"]},}}';
+    await fsp.writeFile(claudeConfigFile, originalRaw, 'utf-8');
+
+    const antigravityConfigFile = path.join(tempDir, 'gemini-valid.json');
+    await safeWriteJson(antigravityConfigFile, {
+      mcpServers: {
+        github: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-github'] },
+      },
+    });
+
+    const mockAgents: DetectedAgent[] = [
+      {
+        id: 'claude',
+        name: 'Claude Code',
+        displayName: 'Claude Code',
+        isInstalled: true,
+        paths: {
+          configDir: tempDir,
+          skillsDir: path.join(tempDir, 'skills-corrupt-sync'),
+          mcpConfigFile: claudeConfigFile,
+        },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+      {
+        id: 'antigravity',
+        name: 'Google Antigravity',
+        displayName: 'Google Antigravity',
+        isInstalled: true,
+        paths: {
+          configDir: tempDir,
+          skillsDir: path.join(tempDir, 'skills-corrupt-sync-2'),
+          mcpConfigFile: antigravityConfigFile,
+        },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+    ];
+
+    const isolatedHubMcp = path.join(tempDir, 'isolated-corrupt-sync-hub.json');
+    const summary = await syncMcpConfigs(mockAgents, {
+      masterHubPath: isolatedHubMcp,
+      backupExisting: true,
+    });
+
+    const claudeResult = summary.results.find((r) => r.agentId === 'claude');
+    expect(claudeResult?.success).toBe(true);
+    expect(claudeResult?.configWasInvalid).toBe(true);
+
+    const antigravityResult = summary.results.find((r) => r.agentId === 'antigravity');
+    expect(antigravityResult?.configWasInvalid).toBeFalsy();
+
+    // File was reset and rewritten with valid JSON (the merged servers from
+    // the OTHER agent - its own "demo" server is gone, since it could never
+    // be parsed out of the corrupt original).
+    const rewritten = await safeReadJson<MCPConfigFile>(claudeConfigFile);
+    expect(Object.keys(rewritten?.mcpServers || {})).toEqual(['github']);
+
+    // The original corrupt content was preserved as a sibling backup file
+    // (backupPath renames-aside before rewriting), not just discarded.
+    const siblingFiles = await fsp.readdir(tempDir);
+    const backupFile = siblingFiles.find((f) => f.startsWith('claude-corrupt-sync.json.backup-'));
+    expect(backupFile).toBeDefined();
+    const backupContent = await fsp.readFile(path.join(tempDir, backupFile!), 'utf-8');
+    expect(backupContent).toBe(originalRaw);
+  });
 });
