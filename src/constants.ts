@@ -12,6 +12,12 @@ export const DEFAULT_CONFIG_PATH = '~/.agentsync/config.json';
 // Single shared lockfile path so every writer (CLI commands, watcher,
 // rollback snapshots) contends on the same lock.
 export const DEFAULT_LOCK_PATH = '~/.agentsync/.lock';
+// One-shot CLI commands (as opposed to the long-running watcher, which is
+// fine skipping a change and picking it up on its next debounce) retry
+// acquiring the shared lock for this long before giving up and reporting
+// a clear failure - long enough to ride out a typical watcher-triggered
+// sync (tens of milliseconds) without the user's command silently no-op'ing.
+export const LOCK_RETRY_MAX_WAIT_MS = 3000;
 
 // Generated Header Comment for mirrored rule files
 export const AUTO_GENERATED_HEADER = `<!-- Auto-synchronized by AgentSync from AGENTS.md. DO NOT EDIT DIRECTLY. -->\n\n`;

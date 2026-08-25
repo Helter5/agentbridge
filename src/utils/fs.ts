@@ -363,15 +363,41 @@ export async function acquireLock(
   }
 }
 
+export interface WithLockOptions {
+  onBusy?: () => void;
+  /**
+   * How long to keep retrying to acquire the lock before giving up, in ms.
+   * Default 0 = a single attempt, no retry (matches the original
+   * behavior - appropriate for a long-running watcher, which will simply
+   * pick the change up again on its next debounce). One-shot CLI writers
+   * should pass a few seconds here so a brief overlap with another
+   * agentsync process resolves itself instead of silently no-op'ing.
+   */
+  maxWaitMs?: number;
+  /** Delay between retry attempts, in ms. Default 100. */
+  pollIntervalMs?: number;
+}
+
 /**
- * Runs an async operation with a lockfile
+ * Runs an async operation with a lockfile. Returns null (fn is never
+ * called) if the lock could not be acquired within maxWaitMs - callers
+ * MUST check for null rather than assuming fn ran, since that's the only
+ * signal that the write was skipped due to lock contention.
  */
 export async function withLock<T>(
   lockFilePath: string,
   fn: () => Promise<T>,
-  onBusy?: () => void
+  options: WithLockOptions = {}
 ): Promise<T | null> {
-  const lock = await acquireLock(lockFilePath);
+  const { onBusy, maxWaitMs = 0, pollIntervalMs = 100 } = options;
+  const deadline = Date.now() + maxWaitMs;
+
+  let lock = await acquireLock(lockFilePath);
+  while (!lock.acquired && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    lock = await acquireLock(lockFilePath);
+  }
+
   if (!lock.acquired) {
     if (onBusy) onBusy();
     return null;

@@ -9,7 +9,7 @@ import {
   chmodBestEffort,
   withLock,
 } from '../utils/fs.js';
-import { DEFAULT_LOCK_PATH } from '../constants.js';
+import { DEFAULT_LOCK_PATH, LOCK_RETRY_MAX_WAIT_MS } from '../constants.js';
 
 const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 
@@ -60,9 +60,23 @@ export async function createBackupSnapshot(
   };
 
   const snapshotFile = path.join(backupsDir, `${id}.json`);
-  await withLock(lockFilePath, async () => {
-    await safeWriteJson(snapshotFile, snapshot);
-  });
+  const wrote = await withLock(
+    lockFilePath,
+    async () => {
+      await safeWriteJson(snapshotFile, snapshot);
+    },
+    { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
+  );
+  if (wrote === null) {
+    // Distinct from the `files` being empty above (a legitimate null - no
+    // target files existed yet, nothing to protect): here withLock()
+    // never ran the write at all, so returning `snapshot` as if it were
+    // safely on disk would hand executeTransactionalOperation() a
+    // rollback safety net that doesn't actually exist on failure.
+    throw new Error(
+      `Could not create backup snapshot: another agentsync process is currently modifying configs. Try again in a moment.`
+    );
+  }
   return snapshot;
 }
 

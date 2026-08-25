@@ -15,7 +15,7 @@ import {
 import { parseFrontmatter, validateSkillFrontmatter } from '../utils/schema.js';
 import { generateSkillMarkdown, type CreateSkillTemplateOptions } from '../templates/skill.template.js';
 import { DEFAULT_HUB_SKILLS_PATH } from './detector.js';
-import { DEFAULT_LOCK_PATH } from '../constants.js';
+import { DEFAULT_LOCK_PATH, LOCK_RETRY_MAX_WAIT_MS } from '../constants.js';
 
 const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 import type { DetectedAgent } from '../types/client.js';
@@ -299,9 +299,21 @@ export async function createNewSkill(
     instructions: options.instructions,
   });
 
-  await withLock(lockFilePath, async () => {
-    await fsp.writeFile(skillFile, markdown, 'utf-8');
-  });
+  const wrote = await withLock(
+    lockFilePath,
+    async () => {
+      await fsp.writeFile(skillFile, markdown, 'utf-8');
+    },
+    { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
+  );
+  if (wrote === null) {
+    // withLock() never runs the callback when it can't get the lock - it
+    // does NOT queue and retry later, so proceeding here would report a
+    // skill as created when SKILL.md was never actually written.
+    throw new Error(
+      `Could not create skill '${name}': another agentsync process is currently modifying configs. Try again in a moment.`
+    );
+  }
 
   const manifest = (await readSkillDirectory(skillDir))!;
   return {
@@ -441,9 +453,21 @@ export async function selectivelyImportSkills(
             instructions: parsed.content,
           });
         }
-        await withLock(lockFilePath, async () => {
-          await fsp.writeFile(path.join(destDir, 'SKILL.md'), finalContent, 'utf-8');
-        });
+        const wrote = await withLock(
+          lockFilePath,
+          async () => {
+            await fsp.writeFile(path.join(destDir, 'SKILL.md'), finalContent, 'utf-8');
+          },
+          { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
+        );
+        if (wrote === null) {
+          // withLock() never runs the callback when it can't get the lock
+          // - pushing to importedSkills below would report success for a
+          // file that was never written.
+          throw new Error(
+            'Another agentsync process is currently modifying configs. Try again in a moment.'
+          );
+        }
       }
       importedSkills.push(skill.name);
     } catch (err: any) {
