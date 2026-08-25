@@ -79,7 +79,9 @@ async function checkLinkStatus(
   if (isLink) {
     const target = await readLinkTarget(skillsDir);
     const absHub = path.resolve(hubPath);
-    if (target && (path.resolve(target) === absHub || target === absHub)) {
+    // readlink() can return a path relative to the link's own directory
+    // (common for POSIX symlinks); resolve against that directory, not cwd.
+    if (target && path.resolve(path.dirname(skillsDir), target) === absHub) {
       return { isLinked: true, status: 'linked' };
     }
     return { isLinked: false, status: 'broken_link' };

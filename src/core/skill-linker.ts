@@ -148,7 +148,9 @@ export async function mergeSkillsIntoHub(
     const isLink = await isSymlinkOrJunction(skillsDir);
     if (isLink) {
       const target = await readLinkTarget(skillsDir);
-      if (target && path.resolve(target) === absHub) {
+      // readlink() can return a path relative to the link's own directory;
+      // resolve against that directory, not cwd.
+      if (target && path.resolve(path.dirname(skillsDir), target) === absHub) {
         continue;
       }
     }
@@ -219,7 +221,9 @@ export async function linkAgentsToHub(
         const isLink = await isSymlinkOrJunction(skillsDir);
         if (isLink) {
           const target = await readLinkTarget(skillsDir);
-          if (target && path.resolve(target) === absHub) {
+          // readlink() can return a path relative to the link's own directory;
+          // resolve against that directory, not cwd.
+          if (target && path.resolve(path.dirname(skillsDir), target) === absHub) {
             result.success = true;
             result.actionTaken = 'already_linked';
             linkedAgents.push(result);
