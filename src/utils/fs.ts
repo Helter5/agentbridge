@@ -101,7 +101,11 @@ export async function safeReadJson<T = unknown>(filePath: string): Promise<T | n
 }
 
 /**
- * Safely writes formatted JSON to file with atomic write
+ * Safely writes formatted JSON to file with atomic write.
+ * Restricts the file to owner-only read/write (0o600), since these files
+ * can contain MCP server credentials. The `mode` passed to writeFile only
+ * applies when the file is newly created, so an explicit chmod covers the
+ * case where an existing, more permissive file is being overwritten.
  */
 export async function safeWriteJson(
   filePath: string,
@@ -110,7 +114,21 @@ export async function safeWriteJson(
 ): Promise<void> {
   await ensureDir(path.dirname(filePath));
   const content = JSON.stringify(data, null, indent) + '\n';
-  await fsp.writeFile(filePath, content, 'utf-8');
+  await fsp.writeFile(filePath, content, { encoding: 'utf-8', mode: 0o600 });
+  await chmodBestEffort(filePath, 0o600);
+}
+
+/**
+ * Best-effort chmod: some platforms/filesystems (e.g. Windows FAT/exFAT
+ * volumes) don't support POSIX permission bits, so failures are swallowed
+ * rather than breaking the write that already succeeded.
+ */
+export async function chmodBestEffort(filePath: string, mode: number): Promise<void> {
+  try {
+    await fsp.chmod(filePath, mode);
+  } catch {
+    // Ignore - not all platforms/filesystems support chmod.
+  }
 }
 
 /**
@@ -304,12 +322,13 @@ export async function acquireLock(
   }
 
   try {
-    const handle = await fsp.open(absLock, 'wx');
+    const handle = await fsp.open(absLock, 'wx', 0o600);
     await handle.writeFile(
       JSON.stringify({ pid: process.pid, timestamp: new Date().toISOString() }),
       'utf-8'
     );
     await handle.close();
+    await chmodBestEffort(absLock, 0o600);
 
     return {
       acquired: true,
