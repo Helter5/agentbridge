@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expandHome, pathExists, withLock } from '../utils/fs.js';
 import { getHubSkillsPath } from './skill-linker.js';
 import { syncProjectRules } from './rules.js';
+import { DEFAULT_LOCK_PATH } from '../constants.js';
 
 export interface WatcherOptions {
   hubPath?: string;
@@ -22,7 +23,7 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
   const hubSkillsPath = getHubSkillsPath(options.hubPath);
   const projectRoot = options.projectRoot ? path.resolve(options.projectRoot) : process.cwd();
   const debounceDelay = options.debounceMs || 300;
-  const lockFilePath = path.resolve(expandHome('~/.agentsync/.lock'));
+  const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 
   const watchers: fs.FSWatcher[] = [];
   let skillDebounceTimer: NodeJS.Timeout | null = null;
@@ -32,9 +33,9 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
   const agentsMdInitial = path.join(projectRoot, 'AGENTS.md');
   if (await pathExists(agentsMdInitial)) {
     try {
-      await withLock(lockFilePath, async () => {
-        await syncProjectRules(projectRoot, { mode: 'copy' });
-      });
+      // syncProjectRules() locks its own writes internally (see rules.ts);
+      // no outer withLock here to avoid nesting on the same lockfile.
+      await syncProjectRules(projectRoot, { mode: 'copy' });
     } catch {
       // Non-critical
     }
@@ -70,12 +71,12 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
       const rulesWatcher = fs.watch(agentsMd, (eventType) => {
         if (ruleDebounceTimer) clearTimeout(ruleDebounceTimer);
         ruleDebounceTimer = setTimeout(async () => {
-          await withLock(lockFilePath, async () => {
-            await syncProjectRules(projectRoot, { mode: 'copy' });
-            if (options.onRuleChange) {
-              options.onRuleChange(eventType, 'AGENTS.md');
-            }
-          });
+          // syncProjectRules() locks its own writes internally (see rules.ts);
+          // no outer withLock here to avoid nesting on the same lockfile.
+          await syncProjectRules(projectRoot, { mode: 'copy' });
+          if (options.onRuleChange) {
+            options.onRuleChange(eventType, 'AGENTS.md');
+          }
         }, debounceDelay);
       });
       watchers.push(rulesWatcher);

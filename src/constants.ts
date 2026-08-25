@@ -9,6 +9,9 @@ export const DEFAULT_HUB_SKILLS_PATH = '~/.agentsync/skills';
 export const DEFAULT_MASTER_MCP_PATH = '~/.agentsync/mcp_servers.json';
 export const DEFAULT_GLOBAL_RULES_PATH = '~/.agentsync/global_rules.md';
 export const DEFAULT_CONFIG_PATH = '~/.agentsync/config.json';
+// Single shared lockfile path so every writer (CLI commands, watcher,
+// rollback snapshots) contends on the same lock.
+export const DEFAULT_LOCK_PATH = '~/.agentsync/.lock';
 
 // Generated Header Comment for mirrored rule files
 export const AUTO_GENERATED_HEADER = `<!-- Auto-synchronized by AgentSync from AGENTS.md. DO NOT EDIT DIRECTLY. -->\n\n`;

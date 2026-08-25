@@ -10,10 +10,14 @@ import {
   copyDirRecursive,
   backupPath,
   removeLinkOrDir,
+  withLock,
 } from '../utils/fs.js';
 import { parseFrontmatter, validateSkillFrontmatter } from '../utils/schema.js';
 import { generateSkillMarkdown, type CreateSkillTemplateOptions } from '../templates/skill.template.js';
 import { DEFAULT_HUB_SKILLS_PATH } from './detector.js';
+import { DEFAULT_LOCK_PATH } from '../constants.js';
+
+const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 import type { DetectedAgent } from '../types/client.js';
 import type {
   SkillManifest,
@@ -291,7 +295,9 @@ export async function createNewSkill(
     instructions: options.instructions,
   });
 
-  await fsp.writeFile(skillFile, markdown, 'utf-8');
+  await withLock(lockFilePath, async () => {
+    await fsp.writeFile(skillFile, markdown, 'utf-8');
+  });
 
   const manifest = (await readSkillDirectory(skillDir))!;
   return {
@@ -431,7 +437,9 @@ export async function selectivelyImportSkills(
             instructions: parsed.content,
           });
         }
-        await fsp.writeFile(path.join(destDir, 'SKILL.md'), finalContent, 'utf-8');
+        await withLock(lockFilePath, async () => {
+          await fsp.writeFile(path.join(destDir, 'SKILL.md'), finalContent, 'utf-8');
+        });
       }
       importedSkills.push(skill.name);
     } catch (err: any) {
