@@ -470,6 +470,12 @@ program
     for (const target of result.targets) {
       if (target.action === 'symlinked') {
         p.log.success(`${pc.bold(target.fileName)}: Symlinked to source`);
+      } else if (target.action === 'hardlinked') {
+        p.log.warn(
+          `${pc.bold(target.fileName)}: Hardlinked to source (real symlinks unavailable on this system - ` +
+            `enable Windows Developer Mode or run as admin for true symlinks; a hardlink can go stale if ` +
+            `AGENTS.md is replaced instead of edited in place)`
+        );
       } else if (target.action === 'created') {
         p.log.success(`${pc.bold(target.fileName)}: Mirrored and synchronized`);
       } else if (target.action === 'skipped') {

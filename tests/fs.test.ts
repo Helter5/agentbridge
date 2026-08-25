@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
@@ -107,5 +107,42 @@ describe('Filesystem Utilities', () => {
     // Clean removal
     await removeLinkOrDir(linkDir);
     expect(await isSymlinkOrJunction(linkDir)).toBe(false);
+  });
+
+  it('createCrossPlatformLink() reports a distinct "hardlinked" action (not "created") when a file symlink is unavailable and it falls back to a hardlink', async () => {
+    // Found via manual testing of `sync-rules --mode symlink` on a real
+    // Windows machine without Developer Mode/admin: fs.symlink() for a
+    // file throws EPERM there, and the fallback to fs.link() (hardlink)
+    // used to return the same 'created' action as a real symlink success -
+    // indistinguishable to every caller, even though a hardlink has
+    // different staleness semantics (it won't follow a delete+recreate of
+    // the source file the way a symlink does).
+    const sourceFile = path.join(tempDir, 'source.txt');
+    const linkFile = path.join(tempDir, 'link.txt');
+    await fsp.writeFile(sourceFile, 'original content', 'utf-8');
+
+    const symlinkSpy = vi.spyOn(fsp, 'symlink').mockRejectedValueOnce(
+      Object.assign(new Error('EPERM: operation not permitted, symlink'), { code: 'EPERM' })
+    );
+
+    try {
+      const result = await createCrossPlatformLink(sourceFile, linkFile, 'file');
+      expect(result.success).toBe(true);
+      expect(result.action).toBe('hardlinked');
+
+      // The fallback did actually create a working hardlink, not a no-op.
+      expect(await pathExists(linkFile)).toBe(true);
+      expect(await fsp.readFile(linkFile, 'utf-8')).toBe('original content');
+
+      // Demonstrate the exact staleness gap this distinction exists to
+      // surface: replacing the source file (delete + rewrite, as some
+      // editors' "atomic save" does) does NOT propagate to the hardlink,
+      // unlike a real symlink which would follow the new file.
+      await fsp.rm(sourceFile);
+      await fsp.writeFile(sourceFile, 'replaced content', 'utf-8');
+      expect(await fsp.readFile(linkFile, 'utf-8')).toBe('original content');
+    } finally {
+      symlinkSpy.mockRestore();
+    }
   });
 });
