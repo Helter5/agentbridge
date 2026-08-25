@@ -186,8 +186,24 @@ export async function mergeSkillsIntoHub(
       }
     }
 
-    // Direct directory with skills: import them to hub
-    const entries = await fsp.readdir(skillsDir, { withFileTypes: true });
+    // Direct directory with skills: import them to hub.
+    // skillsDir can be a *broken* symlink/junction (its old target no
+    // longer exists - e.g. left over from a hub rename/rebrand).
+    // pathExists() above isn't a reliable guard against that case: on
+    // Windows, fs.access() on an orphaned junction reparse point can
+    // report the entry as accessible even though its target is gone, so
+    // readdir() below is the first place this actually surfaces. Treat a
+    // broken link the same as "nothing to merge" instead of crashing the
+    // whole link-skills operation for every agent.
+    let entries;
+    try {
+      entries = await fsp.readdir(skillsDir, { withFileTypes: true });
+    } catch (err: any) {
+      if (err.code === 'ENOENT' && isLink) {
+        continue;
+      }
+      throw err;
+    }
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const srcSkillDir = path.join(skillsDir, entry.name);
