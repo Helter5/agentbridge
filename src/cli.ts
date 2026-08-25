@@ -751,7 +751,7 @@ program
     s.start(`Restoring snapshot ${targetId}...`);
 
     const result = await restoreBackupSnapshot(targetId);
-    s.stop('Rollback finished!');
+    s.stop(result.success ? 'Rollback finished!' : 'Rollback did not complete.');
 
     for (const f of result.restoredFiles) {
       p.log.success(`Restored: ${contractHome(f)}`);
@@ -760,6 +760,16 @@ program
     if (result.success) {
       p.outro(pc.green('✔ Successfully rolled back configuration!'));
     } else {
+      // restoreBackupSnapshot() sets `error` (a single top-level message)
+      // for whole-operation failures - unknown snapshot ID, unreadable/
+      // corrupt snapshot file - where `failedFiles` is empty because no
+      // individual file restore was ever attempted. Printing only the
+      // failedFiles loop in that case showed nothing but a generic
+      // "failed or was incomplete", with the actual reason (e.g. "Snapshot
+      // not found: <id>") computed correctly but never surfaced.
+      if (result.error) {
+        p.log.error(result.error);
+      }
       for (const failed of result.failedFiles) {
         p.log.error(`Failed to restore ${contractHome(failed.path)}: ${failed.error}`);
       }
