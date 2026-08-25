@@ -31,14 +31,19 @@ describe('Filesystem Utilities', () => {
 
   it('expands and contracts home directory paths correctly', () => {
     const home = os.homedir();
+    // A path outside the home directory, built from the OS's own root
+    // rather than a hardcoded POSIX ('/usr/local', '/tmp') or Windows
+    // literal, so this assertion holds on every platform in CI.
+    const unrelatedPath = path.join(path.parse(home).root, 'agentsync-unrelated-dir');
+
     expect(expandHome('~')).toBe(home);
     expect(expandHome('~/foo/bar')).toBe(path.join(home, 'foo', 'bar'));
     expect(expandHome('~\\foo\\bar')).toBe(path.join(home, 'foo', 'bar'));
-    expect(expandHome('/usr/local')).toBe('/usr/local');
+    expect(expandHome(unrelatedPath)).toBe(unrelatedPath);
 
     expect(contractHome(home)).toBe('~');
     expect(contractHome(path.join(home, 'projects'))).toBe('~' + path.sep + 'projects');
-    expect(contractHome('/tmp')).toBe('/tmp');
+    expect(contractHome(unrelatedPath)).toBe(unrelatedPath);
   });
 
   it('verifies pathExists and pathExistsSync', async () => {
