@@ -231,9 +231,17 @@ program
         s.start('Synchronizing selected MCP servers...');
         const { syncMcpConfigs } = await import('./core/mcp-sync.js');
         try {
-          await syncMcpConfigs(agents, { backupExisting: true });
+          const mcpSummary = await syncMcpConfigs(agents, { backupExisting: true });
           s.stop('MCP servers synchronized!');
           p.log.success(`Mirrored ${(selectedMcp as string[]).length} MCP server(s) to all agent configs.`);
+          for (const res of mcpSummary.results) {
+            if (res.configWasInvalid) {
+              p.log.warn(
+                `${pc.bold(res.agentId)}: Its config had invalid JSON and was reset (original backed up - ` +
+                  `restore with ${pc.bold('agentbridge rollback')} if needed)`
+              );
+            }
+          }
         } catch (err: any) {
           anyFailure = true;
           s.stop('MCP synchronization failed.');
@@ -342,8 +350,16 @@ program
     p.intro(pc.bgCyan(pc.black(' agentbridge sync-mcp ')));
 
     const agents = await detectInstalledAgents({ checkAll: false });
-    const { mergedServers, serverSources } = await collectMcpServers(agents);
+    const { mergedServers, serverSources, invalidConfigs } = await collectMcpServers(agents);
     const serverNames = Object.keys(mergedServers);
+
+    for (const bad of invalidConfigs) {
+      p.log.warn(
+        `${pc.bold(bad.agentName)}: config at ${contractHome(bad.filePath)} has invalid JSON - ` +
+          `its existing servers are excluded from this merge, and its file will be reset to only ` +
+          `the servers synced below (original backed up; restore with ${pc.bold('agentbridge rollback')} if needed)`
+      );
+    }
 
     if (serverNames.length === 0) {
       p.log.warn('No configured MCP servers found across any detected agents.');
@@ -391,7 +407,13 @@ program
     s.stop('MCP synchronization complete!');
 
     for (const res of summary.results) {
-      if (res.success) {
+      if (res.success && res.configWasInvalid) {
+        p.log.warn(
+          `${pc.bold(res.agentId)}: Config at ${contractHome(res.filePath)} had invalid JSON - ` +
+            `reset and rewritten with the synced servers only [Total: ${res.totalServers}]. ` +
+            `Original (invalid) file backed up - restore with ${pc.bold('agentbridge rollback')} if needed.`
+        );
+      } else if (res.success) {
         const added = res.addedServers.length ? ` (+${res.addedServers.length} new)` : '';
         p.log.success(
           `${pc.bold(res.agentId)}: Updated config at ${contractHome(res.filePath)}${pc.green(added)} [Total: ${res.totalServers}]`
