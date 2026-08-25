@@ -246,13 +246,33 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
         if (validation.isValid) {
           const serverCount = Object.keys(json.mcpServers || {}).length;
           
-          // Secret scan inside MCP servers
+          // Secret scan inside MCP servers - checked per-field (rather than
+          // one JSON.stringify of the whole server object) so the scanner
+          // knows which field name each value came from. That lets it tell
+          // a git commit SHA apart from a bare 40-hex secret look-alike
+          // (see detectPotentialSecrets' fieldName option).
           const exposedSecrets: string[] = [];
-          for (const [serverName, srv] of Object.entries(json.mcpServers || {})) {
-            const rawStr = JSON.stringify(srv);
-            const secretCheck = detectPotentialSecrets(rawStr);
+          const checkField = (label: string, fieldName: string, fieldValue: unknown) => {
+            if (typeof fieldValue !== 'string') return;
+            const secretCheck = detectPotentialSecrets(fieldValue, { fieldName });
             if (secretCheck.hasSecret) {
-              exposedSecrets.push(`${serverName}: ${secretCheck.reason}`);
+              exposedSecrets.push(`${label}: ${secretCheck.reason}`);
+            }
+          };
+          for (const [serverName, srv] of Object.entries(json.mcpServers || {})) {
+            if (!srv || typeof srv !== 'object') continue;
+            for (const [fieldName, fieldValue] of Object.entries(srv as Record<string, unknown>)) {
+              if (Array.isArray(fieldValue)) {
+                fieldValue.forEach((v) => checkField(`${serverName}.${fieldName}`, fieldName, v));
+              } else if (fieldValue && typeof fieldValue === 'object') {
+                // e.g. env: { GITHUB_TOKEN: "..." } - use the inner key
+                // (the actual env var name) as the field-name context.
+                for (const [subKey, subVal] of Object.entries(fieldValue as Record<string, unknown>)) {
+                  checkField(`${serverName}.${fieldName}.${subKey}`, subKey, subVal);
+                }
+              } else {
+                checkField(`${serverName}.${fieldName}`, fieldName, fieldValue);
+              }
             }
           }
 
