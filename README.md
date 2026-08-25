@@ -33,8 +33,8 @@ AgentBridge standardizes configurations across all environments:
 
 ```mermaid
 flowchart TD
-    CLI[agentbridge CLI / SDK] --> Hub[(~/.agentbridge/skills Hub)]
-    
+    CLI[agentbridge CLI / SDK]
+
     subgraph Core Engine
         Detector[Client Detector]
         SkillLinker[Skill Linker & Hub]
@@ -44,17 +44,40 @@ flowchart TD
         Rollback[Backup & Rollback]
         Watcher[Live File Watcher]
     end
-    
-    Hub <== "Cross-Platform Junction / Symlink" ==> G[Google Antigravity<br/>~/.gemini]
-    Hub <== "Cross-Platform Junction / Symlink" ==> C[Claude Code / Desktop<br/>~/.claude]
-    Hub <== "Cross-Platform Junction / Symlink" ==> O[OpenAI Codex<br/>~/.codex]
-    Hub <== "Cross-Platform Junction / Symlink" ==> U[Cursor<br/>~/.cursor]
-    
-    MCPSync <== "Safely Merge JSON" ==> G
-    MCPSync <== "Safely Merge JSON" ==> C
-    MCPSync <== "Safely Merge JSON" ==> O
-    MCPSync <== "Safely Merge JSON" ==> U
+
+    CLI --> Detector
+    Detector -.detects installed agents.-> SkillLinker
+    Detector -.detects installed agents.-> MCPSync
+    CLI --> SkillLinker
+    CLI --> MCPSync
+    CLI --> Rules
+    CLI --> Doctor
+    CLI --> Rollback
+    Watcher -->|debounced auto-sync| SkillLinker
+    Watcher -->|debounced auto-sync| Rules
+
+    SkillLinker <== "Junction / Symlink" ==> Hub[(~/.agentbridge/skills Hub)]
+    Hub <== "Junction / Symlink" ==> G[Google Antigravity<br/>~/.gemini]
+    Hub <== "Junction / Symlink" ==> C[Claude Code / Desktop<br/>~/.claude]
+    Hub <== "Junction / Symlink" ==> O[OpenAI Codex<br/>~/.codex]
+    Hub <== "Junction / Symlink" ==> U[Cursor<br/>~/.cursor]
+
+    MCPSync <== "Merge JSON" ==> G
+    MCPSync <== "Merge JSON" ==> C
+    MCPSync <== "Merge JSON" ==> O
+    MCPSync <== "Merge JSON" ==> U
+
+    Rules -->|source of truth| AGENTS[AGENTS.md]
+    AGENTS -->|sync| CLAUDEMD[CLAUDE.md]
+    AGENTS -->|sync| GEMINIMD[GEMINI.md]
+    AGENTS -->|sync| CURSORRULES[.cursorrules]
+    AGENTS -->|sync| COPILOT[.github/copilot-instructions.md]
+
+    Rollback -.snapshot before write.-> SkillLinker
+    Rollback -.snapshot before write.-> MCPSync
 ```
+
+`Doctor` reads across the hub and all 4 agents for diagnostics but writes nothing on its own (`--fix` reuses `SkillLinker`), so it has no outgoing edges above.
 
 ---
 
@@ -89,6 +112,8 @@ npm install -g agentbridge
 
 ## CLI Reference
 
+Most commands (`status`, `pick`, `link-skills`, `sync-mcp`'s output target aside, `add-skill`, `doctor`) accept `--hub <path>` to override the default `~/.agentbridge/skills` hub location.
+
 ### 1. `agentbridge status`
 Scans the system and presents an ASCII table overview of all installed AI coding agents, skills counts, hub linking status, and configured MCP servers.
 
@@ -119,6 +144,7 @@ Safely reads MCP server declarations across all detected client configuration fi
 ```bash
 agentbridge sync-mcp
 agentbridge sync-mcp --output ./mcp-unified.json    # Export merged config to standalone file
+agentbridge sync-mcp --dry-run                      # Preview the merge without writing to disk
 agentbridge sync-mcp -y
 ```
 
@@ -158,7 +184,8 @@ Lists timestamped backup snapshots from `~/.agentbridge/backups/` and restores c
 
 ```bash
 agentbridge rollback
-agentbridge rollback --list  # List all available snapshots
+agentbridge rollback --list                 # List all available snapshots
+agentbridge rollback snapshot-1787674932079 # Restore a specific snapshot directly by ID
 ```
 
 ### 10. `agentbridge watch`
