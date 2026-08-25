@@ -200,4 +200,52 @@ describe('MCP Synchronizer Engine', () => {
       }
     }
   });
+
+  it('rejects a "__proto__" MCP server name instead of reassigning the merged object\'s prototype', async () => {
+    const claudeConfigFile = path.join(tempDir, 'claude-proto.json');
+    // A crafted agent config file with a "__proto__"-named server entry -
+    // JSON.parse() creates this as a normal own property, but assigning
+    // it into a plain object via obj[name] = ... (not spread) invokes the
+    // real Object.prototype.__proto__ setter.
+    await fsp.writeFile(
+      claudeConfigFile,
+      JSON.stringify({
+        mcpServers: {
+          '__proto__': { command: 'evil', args: ['payload'] },
+          legit: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-memory'] },
+        },
+      }),
+      'utf-8'
+    );
+
+    const mockAgents: DetectedAgent[] = [
+      {
+        id: 'claude',
+        name: 'Claude Code',
+        displayName: 'Claude Code',
+        isInstalled: true,
+        paths: {
+          configDir: tempDir,
+          skillsDir: path.join(tempDir, 'skills-proto'),
+          mcpConfigFile: claudeConfigFile,
+        },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 2,
+        isLinkedToHub: false,
+      },
+    ];
+
+    const isolatedHubMcp = path.join(tempDir, 'isolated-proto-hub.json');
+    const { mergedServers } = await collectMcpServers(mockAgents, {
+      masterHubPath: isolatedHubMcp,
+    });
+
+    // The legit entry made it through; "__proto__" did not become an own
+    // property (bracket-assigning it would have swapped the object's
+    // prototype instead of adding a key named "__proto__").
+    expect(Object.keys(mergedServers)).toEqual(['legit']);
+    // And the object's actual prototype is untouched - still the normal
+    // Object.prototype, not the attacker-supplied { command: 'evil', ... }.
+    expect(Object.getPrototypeOf(mergedServers)).toBe(Object.prototype);
+  });
 });

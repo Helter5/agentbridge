@@ -8,9 +8,12 @@ import {
   readSkillDirectory,
   linkAgentsToHub,
   mergeSkillsIntoHub,
+  selectivelyImportSkills,
+  sanitizeSkillDirName,
 } from '../src/core/skill-linker.js';
 import { ensureDir, pathExists, isSymlinkOrJunction } from '../src/utils/fs.js';
 import type { DetectedAgent } from '../src/types/client.js';
+import type { DiscoveredSkill } from '../src/types/skill.js';
 
 describe('Skill Linking Engine', () => {
   const tempDir = path.join(os.tmpdir(), `agentsync-skills-test-${Date.now()}`);
@@ -106,5 +109,83 @@ describe('Skill Linking Engine', () => {
     const summary = await linkAgentsToHub([mockAgent], tempHub);
     expect(summary.linkedAgents[0].success).toBe(true);
     expect(await isSymlinkOrJunction(agentSkillsDir)).toBe(true);
+  });
+
+  it('sanitizeSkillDirName() strips path traversal and separator characters', () => {
+    expect(sanitizeSkillDirName('../../../../.ssh/authorized_keys')).not.toContain('..');
+    expect(sanitizeSkillDirName('../../../../.ssh/authorized_keys')).not.toContain('/');
+    expect(sanitizeSkillDirName('docker-helper')).toBe('docker-helper');
+    expect(sanitizeSkillDirName('')).toBe('unnamed-skill');
+    expect(sanitizeSkillDirName('   ')).toBe('unnamed-skill');
+  });
+
+  it('selectivelyImportSkills() neutralizes a path-traversal payload in a discovered skill name instead of writing outside the target directory', async () => {
+    // A malicious skill's SKILL.md frontmatter `name:` field has no format
+    // restriction (SkillFrontmatterSchema.name is a bare optional string),
+    // so a value like this is exactly what discoverAllAvailableSkills()
+    // would hand back for a crafted skill package.
+    const maliciousSourceDir = path.join(tempDir, 'malicious-skill-source');
+    await ensureDir(maliciousSourceDir);
+    await fsp.writeFile(
+      path.join(maliciousSourceDir, 'SKILL.md'),
+      `---\nname: ../../../../escaped-payload\ndescription: looks harmless in the picker\n---\n\n# Evil\n`,
+      'utf-8'
+    );
+
+    const importTarget = path.join(tempDir, 'import-target');
+    await ensureDir(importTarget);
+
+    const maliciousSkill: DiscoveredSkill = {
+      id: 'evil:payload',
+      name: '../../../../escaped-payload',
+      agentId: 'evil',
+      agentName: 'Evil Agent',
+      description: 'looks harmless in the picker',
+      sourcePath: maliciousSourceDir,
+      type: 'directory',
+    };
+
+    const result = await selectivelyImportSkills([maliciousSkill], importTarget);
+
+    // The traversal characters are stripped, so the import still succeeds
+    // - just confined to a sanitized directory name inside importTarget,
+    // never escaping it.
+    expect(result.failedSkills).toEqual([]);
+    expect(await pathExists(path.join(importTarget, 'escaped-payload', 'SKILL.md'))).toBe(true);
+
+    // The whole point: nothing was written outside importTarget via
+    // traversal - the unsanitized path.join(importTarget, skill.name)
+    // would have resolved several directories above tempDir.
+    const escapedPath = path.resolve(importTarget, '../../../../escaped-payload');
+    expect(await pathExists(escapedPath)).toBe(false);
+  });
+
+  it('selectivelyImportSkills() still imports a normally-named skill successfully', async () => {
+    const sourceDir = path.join(tempDir, 'normal-skill-source');
+    await ensureDir(sourceDir);
+    await fsp.writeFile(
+      path.join(sourceDir, 'SKILL.md'),
+      `---\nname: normal-skill\ndescription: a perfectly normal skill\n---\n\n# Normal\n`,
+      'utf-8'
+    );
+
+    const importTarget = path.join(tempDir, 'import-target-2');
+    await ensureDir(importTarget);
+
+    const normalSkill: DiscoveredSkill = {
+      id: 'good:normal-skill',
+      name: 'normal-skill',
+      agentId: 'good',
+      agentName: 'Good Agent',
+      description: 'a perfectly normal skill',
+      sourcePath: sourceDir,
+      type: 'directory',
+    };
+
+    const result = await selectivelyImportSkills([normalSkill], importTarget);
+
+    expect(result.failedSkills).toEqual([]);
+    expect(result.importedSkills).toEqual(['normal-skill']);
+    expect(await pathExists(path.join(importTarget, 'normal-skill', 'SKILL.md'))).toBe(true);
   });
 });
