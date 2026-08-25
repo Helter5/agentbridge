@@ -175,4 +175,47 @@ describe('Lockfile and Concurrency Engine', () => {
     const expectedPayload = winnerLabel === 'A' ? payloadA : payloadB;
     expect(finalContent).toBe(expectedPayload);
   });
+
+  it('withLock() retries for maxWaitMs then gives up (returns null) instead of hanging forever', async () => {
+    const lockFile = path.join(tempDir, '.retry-exhaust.lock');
+    const held = await acquireLock(lockFile);
+    expect(held.acquired).toBe(true);
+
+    try {
+      const start = Date.now();
+      const result = await withLock(lockFile, async () => 'should-not-run', {
+        maxWaitMs: 150,
+        pollIntervalMs: 30,
+      });
+      const elapsed = Date.now() - start;
+
+      // Never ran the callback while the lock was held...
+      expect(result).toBeNull();
+      // ...and it actually retried for roughly maxWaitMs (not an instant
+      // single failed attempt, and not an unbounded wait either).
+      expect(elapsed).toBeGreaterThanOrEqual(150);
+      expect(elapsed).toBeLessThan(1000);
+    } finally {
+      await held.release();
+    }
+  });
+
+  it('withLock() retries until the lock frees up, then runs the callback', async () => {
+    const lockFile = path.join(tempDir, '.retry-succeed.lock');
+    const held = await acquireLock(lockFile);
+    expect(held.acquired).toBe(true);
+
+    // Release the lock partway through the retry window, simulating a
+    // watcher-held lock that finishes its own brief write.
+    setTimeout(() => {
+      held.release();
+    }, 200);
+
+    const result = await withLock(lockFile, async () => 'ran', {
+      maxWaitMs: 2000,
+      pollIntervalMs: 50,
+    });
+
+    expect(result).toBe('ran');
+  });
 });
