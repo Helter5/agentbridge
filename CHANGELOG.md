@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.1] - 2026-08-26
 
-Two further manual regression passes over `v1.0.0` (a targeted delta
-check on the first fix below, then a full sweep adding permissions/
-disk and Unicode/data-integrity categories that hadn't been covered
-before) turned up five more findings - all fixed here.
+Three further manual regression passes over `v1.0.0` (a targeted delta
+check on the first fix below, a full sweep adding permissions/disk and
+Unicode/data-integrity categories that hadn't been covered before, then
+a final delta check on that pass's own fixes) turned up six more
+findings - all fixed here.
 
 ### Fixed
 - `agentbridge unlink --no-restore` printed "Successfully unlinked and
@@ -45,6 +46,14 @@ before) turned up five more findings - all fixed here.
   kept echoing back the original empty string. Now rejected outright
   with a clear error, consistent with how `add-skill` already refuses
   other invalid input (a colliding name, a path-traversal attempt).
+- `agentbridge link-skills` failing partway through more than one agent
+  (e.g. the 2nd of 3) reported only the bare underlying exception - the
+  try/catch fix above stopped it from exiting `0` silently, but gave no
+  indication that an earlier agent's skills may already have been
+  merged into the hub (a real, partial disk mutation) while later
+  agents were never reached. Now names which agent actually failed,
+  which agents were already processed before it, and recommends running
+  `agentbridge doctor` to check the current state before retrying.
 
 ## [1.0.0] - 2026-08-25
 
