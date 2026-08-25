@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Written config, backup snapshot, and lockfiles are now restricted to `0600` instead of inheriting the platform default (previously world-readable on a shared POSIX machine).
 - Guarded against a `__proto__`-named MCP server entry reassigning the merged config object's own prototype during config merging (bounded impact, but closed before any future deep-merge refactor could make it worse).
 - Widened the doctor's plaintext-secret detector to catch AWS, Google, Slack, JWT, and npm token formats it previously missed, while adding a field-name-aware exception so a git commit SHA isn't misflagged as a secret.
+- `agentsync pick`/`import` no longer silently overwrites an existing skill's `SKILL.md` when a sanitized name collides with one already imported (common when the same skill exists in more than one agent's directory); it's skipped and reported unless `overwrite` is explicitly requested. `agentsync add-skill` gets the same protection against overwriting an existing skill.
 
 ### Fixed
 - Every agent-config writer (CLI commands, not just the `watch` daemon) now serializes through a single shared lockfile, and retries for a few seconds before reporting a clear failure instead of silently doing nothing when another `agentsync` process briefly holds the lock.
