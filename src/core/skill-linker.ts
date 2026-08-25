@@ -503,6 +503,21 @@ export async function selectivelyImportSkills(
     }
     try {
       if (skill.type === 'directory') {
+        // Same collision risk as the markdown_file branch below (MEDIUM-002):
+        // sanitizeSkillDirName() can map two different skill.name values to
+        // the same destDir. copyDirRecursive()'s own overwrite=false only
+        // skips individual files that already exist - it never reports a
+        // top-level failure, so without this check a colliding directory
+        // skill was silently absorbed (no files touched) while still being
+        // reported to the user as "Imported" success.
+        const destSkillFile = path.join(destDir, 'SKILL.md');
+        if (options.overwrite !== true && (await pathExists(destSkillFile))) {
+          failedSkills.push({
+            name: skill.name,
+            error: `Skipped: '${destDir}' already exists — use overwrite to replace it.`,
+          });
+          continue;
+        }
         await copyDirRecursive(skill.sourcePath, destDir, options.overwrite);
       } else {
         // Standalone markdown file -> wrap in folder with SKILL.md
