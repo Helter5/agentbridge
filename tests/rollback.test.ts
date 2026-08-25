@@ -12,12 +12,24 @@ import { ensureDir, pathExists, acquireLock } from '../src/utils/fs.js';
 
 describe('Rollback & Snapshot Engine', () => {
   const tempDir = path.join(os.tmpdir(), `agentbridge-rollback-test-${Date.now()}`);
+  let originalBackupsDirEnv: string | undefined;
 
   beforeEach(async () => {
     await ensureDir(tempDir);
+    // Isolate every test in this file from the real ~/.agentbridge/backups -
+    // createBackupSnapshot()/getBackupsDirectory() previously had no way to
+    // redirect this, so every test run here left real snapshot files behind
+    // in the developer's actual home directory.
+    originalBackupsDirEnv = process.env.AGENTBRIDGE_BACKUPS_DIR;
+    process.env.AGENTBRIDGE_BACKUPS_DIR = path.join(tempDir, 'backups');
   });
 
   afterEach(async () => {
+    if (originalBackupsDirEnv === undefined) {
+      delete process.env.AGENTBRIDGE_BACKUPS_DIR;
+    } else {
+      process.env.AGENTBRIDGE_BACKUPS_DIR = originalBackupsDirEnv;
+    }
     await fsp.rm(tempDir, { recursive: true, force: true });
   });
 
@@ -80,18 +92,12 @@ describe('Rollback & Snapshot Engine', () => {
 
       expect(snapshot).not.toBeNull();
       // The whole point: the snapshot must actually be on disk, not just an
-      // in-memory object handed back after a skipped write.
+      // in-memory object handed back after a skipped write. Written to the
+      // isolated AGENTBRIDGE_BACKUPS_DIR set in beforeEach, cleaned up
+      // automatically with the rest of tempDir in afterEach.
       const backupsDir = getBackupsDirectory();
       const snapshotFile = path.join(backupsDir, `${snapshot!.id}.json`);
       expect(await pathExists(snapshotFile)).toBe(true);
-
-      // Clean up the snapshot file this test wrote to the (real) shared
-      // backups directory - don't leave test artifacts in the user's
-      // ~/.agentbridge/backups. Only the lockfile itself is isolated by
-      // AGENTBRIDGE_LOCK_PATH; the backups directory is a separate,
-      // non-contended path (concurrent writers there don't race the way
-      // a mutex lockfile does), so it's out of scope for this fix.
-      await fsp.unlink(snapshotFile).catch(() => {});
     } finally {
       if (originalLockPathEnv === undefined) {
         delete process.env.AGENTBRIDGE_LOCK_PATH;
@@ -100,5 +106,17 @@ describe('Rollback & Snapshot Engine', () => {
       }
     }
   }, 6000);
+
+  it('getBackupsDirectory() honors AGENTBRIDGE_BACKUPS_DIR, falling back to the real default when unset', async () => {
+    // beforeEach already set an override for this file's other tests -
+    // unset it here specifically to check the real-default fallback path.
+    delete process.env.AGENTBRIDGE_BACKUPS_DIR;
+    const defaultResolved = getBackupsDirectory();
+    expect(defaultResolved.endsWith(path.join('.agentbridge', 'backups'))).toBe(true);
+
+    const override = path.join(tempDir, 'custom-backups-location');
+    process.env.AGENTBRIDGE_BACKUPS_DIR = override;
+    expect(getBackupsDirectory()).toBe(path.resolve(override));
+  });
 });
 

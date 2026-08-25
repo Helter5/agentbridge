@@ -15,12 +15,23 @@ import type { DetectedAgent } from '../src/types/client.js';
 
 describe('Transactional Multi-Agent Rollback Suite', () => {
   const tempDir = path.join(os.tmpdir(), `agentbridge-trans-test-${Date.now()}`);
+  let originalBackupsDirEnv: string | undefined;
 
   beforeEach(async () => {
     await ensureDir(tempDir);
+    // executeTransactionalOperation() creates a real snapshot via
+    // createBackupSnapshot() before every attempt - isolate it so this
+    // test doesn't leave a stray file in ~/.agentbridge/backups.
+    originalBackupsDirEnv = process.env.AGENTBRIDGE_BACKUPS_DIR;
+    process.env.AGENTBRIDGE_BACKUPS_DIR = path.join(tempDir, 'backups');
   });
 
   afterEach(async () => {
+    if (originalBackupsDirEnv === undefined) {
+      delete process.env.AGENTBRIDGE_BACKUPS_DIR;
+    } else {
+      process.env.AGENTBRIDGE_BACKUPS_DIR = originalBackupsDirEnv;
+    }
     await fsp.rm(tempDir, { recursive: true, force: true });
   });
 

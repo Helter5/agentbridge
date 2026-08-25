@@ -13,12 +13,23 @@ import type { MCPConfigFile } from '../src/types/mcp.js';
 
 describe('MCP Synchronizer Engine', () => {
   const tempDir = path.join(os.tmpdir(), `agentbridge-mcp-test-${Date.now()}`);
+  let originalBackupsDirEnv: string | undefined;
 
   beforeEach(async () => {
     await ensureDir(tempDir);
+    // syncMcpConfigs() goes through executeTransactionalOperation(), which
+    // creates a real backup snapshot before every attempt - isolate it so
+    // these tests don't leave stray files in ~/.agentbridge/backups.
+    originalBackupsDirEnv = process.env.AGENTBRIDGE_BACKUPS_DIR;
+    process.env.AGENTBRIDGE_BACKUPS_DIR = path.join(tempDir, 'backups');
   });
 
   afterEach(async () => {
+    if (originalBackupsDirEnv === undefined) {
+      delete process.env.AGENTBRIDGE_BACKUPS_DIR;
+    } else {
+      process.env.AGENTBRIDGE_BACKUPS_DIR = originalBackupsDirEnv;
+    }
     await fsp.rm(tempDir, { recursive: true, force: true });
   });
 
