@@ -176,7 +176,12 @@ export async function syncProjectRules(
           results.push({
             fileName: relPath,
             filePath: targetPath,
-            action: 'symlinked',
+            // createCrossPlatformLink() transparently falls back to a
+            // hardlink when the platform can't create a real symlink (e.g.
+            // Windows without Developer Mode/admin). Report that distinctly
+            // instead of claiming 'symlinked' - a hardlink has different
+            // staleness semantics (see the comment in createCrossPlatformLink).
+            action: linkRes.action === 'hardlinked' ? 'hardlinked' : 'symlinked',
           });
         } else {
           // Fallback to copy

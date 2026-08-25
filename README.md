@@ -157,6 +157,8 @@ agentbridge sync-rules --mode symlink    # Create symlinks instead of auto-sync 
 agentbridge sync-rules --cwd ./my-repo
 ```
 
+> **Note (`--mode symlink` on Windows):** creating a real file symlink requires Developer Mode or an elevated shell. Without either, AgentBridge transparently falls back to a hardlink, which stays in sync when `AGENTS.md` is edited in place but can go stale if it's replaced outright (e.g. some editors' "atomic save" does a delete + rewrite). The CLI output tells you which one you actually got (`Symlinked to source` vs `Hardlinked to source`) - if you see the latter and need true symlinks, enable Developer Mode or run as admin, then re-run the command.
+
 ### 6. `agentbridge add-skill <name>`
 Scaffolds a new skill directory in the central hub with a standard `SKILL.md` template containing YAML frontmatter.
 

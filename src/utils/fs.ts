@@ -209,7 +209,7 @@ export async function removeLinkOrDir(p: string): Promise<void> {
 
 export interface LinkResult {
   success: boolean;
-  action: 'created' | 'already_linked' | 'fallback_copied';
+  action: 'created' | 'already_linked' | 'fallback_copied' | 'hardlinked';
   error?: string;
 }
 
@@ -267,10 +267,18 @@ export async function createCrossPlatformLink(
         return { success: true, action: 'created' };
       } catch (symlinkErr) {
         // On Windows without Developer Mode, file symlink may fail with EPERM.
-        // Fall back to hardlink or file copy
+        // Fall back to hardlink or file copy. A hardlink is reported as its
+        // own distinct action (not 'created', which implies "a real
+        // symlink") - unlike a symlink, a hardlink stays pointed at the
+        // original inode. If a caller later replaces targetPath via
+        // delete-then-recreate (common editor "atomic save" behavior, or
+        // `mv`/`rename`), the hardlink keeps the OLD content and silently
+        // goes stale, while a true symlink would follow the new file.
+        // Callers that promise "kept in sync" (e.g. sync-rules --mode
+        // symlink) need to know which one they actually got.
         try {
           await fsp.link(absTarget, absLink);
-          return { success: true, action: 'created' };
+          return { success: true, action: 'hardlinked' };
         } catch {
           await fsp.copyFile(absTarget, absLink);
           return { success: true, action: 'fallback_copied' };
