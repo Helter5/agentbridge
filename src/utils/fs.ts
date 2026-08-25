@@ -12,7 +12,8 @@ export function expandHome(filePath: string): string {
     return os.homedir();
   }
   if (filePath.startsWith('~\\') || filePath.startsWith('~/')) {
-    return path.join(os.homedir(), filePath.slice(2));
+    const subParts = filePath.slice(2).split(/[/\\]+/).filter(Boolean);
+    return path.join(os.homedir(), ...subParts);
   }
   return filePath;
 }
