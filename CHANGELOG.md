@@ -5,7 +5,12 @@ All notable changes to `agentbridge` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.1] - 2026-08-26
+
+Two further manual regression passes over `v1.0.0` (a targeted delta
+check on the first fix below, then a full sweep adding permissions/
+disk and Unicode/data-integrity categories that hadn't been covered
+before) turned up five more findings - all fixed here.
 
 ### Fixed
 - `agentbridge unlink --no-restore` printed "Successfully unlinked and
@@ -13,8 +18,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   even though `--no-restore` genuinely leaves the standalone folder
   empty. Found during a full v1.0.0 regression re-pass across all
   previously-fixed bugs plus every untested command/flag combination
-  (65/65 checks); the only new finding. Now reports "Successfully
-  unlinked." when nothing was restored.
+  (65/65 checks). Now reports "Successfully unlinked." when nothing was
+  restored.
+- `agentbridge link-skills` was the only one of 5 mutating commands
+  with no `try`/`catch` around its core call. A real filesystem error
+  (an agent's skills directory existing as a plain file instead of a
+  directory, or a read-only home directory) escaped uncaught past
+  `@clack/prompts`' own exception monitor - printing a generic
+  "Something went wrong" with no specifics, and never setting an exit
+  code, so the process exited `0` despite the operation completely
+  failing. Now reports the real error and exits `1`, matching every
+  other mutating command.
+- `status`'s "Local Skills" count included any subdirectory under an
+  agent's skills folder, even ones with no `SKILL.md` at all (a broken
+  partial copy, a stray `.git`, an empty folder) - dead code in the
+  counting logic incremented the count regardless of whether `SKILL.md`
+  actually existed.
+- `agentbridge doctor` (without `--fix`) never set a non-zero exit code
+  when it found real issues - the text already said so correctly, but a
+  script relying on the exit code (`agentbridge doctor && deploy`)
+  would proceed past broken links, exposed secrets, or skill-name
+  collisions anyway. `--fix` successfully resolving what it found still
+  exits `0`.
+- `agentbridge add-skill ""` (an empty name) silently fell back to a
+  generic `unnamed-skill` directory while every confirmation message
+  kept echoing back the original empty string. Now rejected outright
+  with a clear error, consistent with how `add-skill` already refuses
+  other invalid input (a colliding name, a path-traversal attempt).
 
 ## [1.0.0] - 2026-08-25
 
