@@ -105,6 +105,19 @@ Follow these steps...`;
   it('calculates Shannon entropy for boundary-case strings', () => {
     expect(calculateShannonEntropy('')).toBe(0);
     expect(calculateShannonEntropy('aaaaaaaaaa')).toBe(0); // zero entropy: single repeated char
+
+    // Short strings: entropy is defined and finite, but detectPotentialSecrets
+    // never reaches the entropy check for them anyway (its candidate regex
+    // requires 30+ chars), so a short string can't false-positive via entropy.
+    const shortEntropy = calculateShannonEntropy('abc123');
+    expect(shortEntropy).toBeGreaterThan(0);
+    expect(detectPotentialSecrets('abc123').hasSecret).toBe(false);
+
+    // A standard v4 UUID (36 chars incl. hyphens, 16 possible hex symbols
+    // plus the fixed hyphens) is not a secret and should not be flagged.
+    const uuid = '550e8400-e29b-41d4-a716-446655440000';
+    expect(detectPotentialSecrets(uuid).hasSecret).toBe(false);
+
     // A hex-only string (16 possible symbols) caps out at log2(16) = 4 bits,
     // always below the 4.5 high-entropy threshold used by detectPotentialSecrets.
     const hexEntropy = calculateShannonEntropy('0123456789abcdef0123456789abcdef');
