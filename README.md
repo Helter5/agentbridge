@@ -24,7 +24,7 @@ AgentBridge standardizes configurations across all environments:
 1. **Single Source of Truth**: Establishes a unified hub at `~/.agentbridge/skills`.
 2. **Cross-Platform Zero-Privilege Linking**: Uses POSIX Symlinks on macOS/Linux and NTFS Directory Junctions on Windows (no elevated Administrator privileges required).
 3. **Lossless MCP Server Merging**: Deep-merges environment variables, arguments, and server configs across all client configuration files without clobbering custom agent settings.
-4. **Universal Project Rules**: Automatically consolidates and synchronizes `AGENTS.md` to `CLAUDE.md`, `GEMINI.md`, and `.cursorrules`.
+4. **Universal Project Rules**: Automatically consolidates and synchronizes `AGENTS.md` to `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
 5. **Transactional Rollbacks**: Automated snapshot backups before multi-agent synchronization with full restoration on failure.
 
 ---
@@ -123,7 +123,7 @@ agentbridge sync-mcp -y
 ```
 
 ### 5. `agentbridge sync-rules`
-Synchronizes project-level agent rules. Reads `AGENTS.md` as the single source-of-truth and mirrors or symlinks it to `CLAUDE.md`, `GEMINI.md`, and `.cursorrules`.
+Synchronizes project-level agent rules. Reads `AGENTS.md` as the single source-of-truth and mirrors or symlinks it to `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
 
 ```bash
 agentbridge sync-rules
@@ -176,8 +176,9 @@ agentbridge watch
 |---|---|---|---|---|
 | **Google Antigravity** | `~/.gemini/config` | `~/.gemini/config/skills` | `mcp_config.json` | `GEMINI.md` |
 | **Claude Code** | `~/.claude` | `~/.claude/skills` | `claude_desktop_config.json` | `CLAUDE.md` |
-| **OpenAI Codex** | `~/.codex` | `~/.codex/skills` | `config.json` | `CODEX.md` |
+| **OpenAI Codex** | `~/.codex` | `~/.codex/skills` | `config.json` | — *(not a `sync-rules` target yet)* |
 | **Cursor** | `~/.cursor` | `~/.cursor/skills` | `mcp.json` | `.cursorrules` |
+| — | — | — | — | `.github/copilot-instructions.md` *(GitHub Copilot is a `sync-rules` target only - it isn't skill/MCP-managed like the 4 agents above)* |
 
 ---
 
