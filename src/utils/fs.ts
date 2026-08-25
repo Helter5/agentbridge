@@ -101,7 +101,11 @@ export async function safeReadJson<T = unknown>(filePath: string): Promise<T | n
 }
 
 /**
- * Safely writes formatted JSON to file with atomic write
+ * Safely writes formatted JSON to file with atomic write.
+ * Restricts the file to owner-only read/write (0o600), since these files
+ * can contain MCP server credentials. The `mode` passed to writeFile only
+ * applies when the file is newly created, so an explicit chmod covers the
+ * case where an existing, more permissive file is being overwritten.
  */
 export async function safeWriteJson(
   filePath: string,
@@ -110,7 +114,21 @@ export async function safeWriteJson(
 ): Promise<void> {
   await ensureDir(path.dirname(filePath));
   const content = JSON.stringify(data, null, indent) + '\n';
-  await fsp.writeFile(filePath, content, 'utf-8');
+  await fsp.writeFile(filePath, content, { encoding: 'utf-8', mode: 0o600 });
+  await chmodBestEffort(filePath, 0o600);
+}
+
+/**
+ * Best-effort chmod: some platforms/filesystems (e.g. Windows FAT/exFAT
+ * volumes) don't support POSIX permission bits, so failures are swallowed
+ * rather than breaking the write that already succeeded.
+ */
+export async function chmodBestEffort(filePath: string, mode: number): Promise<void> {
+  try {
+    await fsp.chmod(filePath, mode);
+  } catch {
+    // Ignore - not all platforms/filesystems support chmod.
+  }
 }
 
 /**
@@ -253,7 +271,9 @@ export async function createCrossPlatformLink(
 }
 
 /**
- * Checks if a process with the given PID is currently active
+ * Checks if a process with the given PID is currently active.
+ * process.kill(pid, 0) sends no actual signal - it's a Node/libuv
+ * cross-platform existence probe (works on Windows too, not just POSIX).
  */
 export function isProcessAlive(pid: number): boolean {
   if (!pid || pid <= 0) return false;
@@ -261,7 +281,20 @@ export function isProcessAlive(pid: number): boolean {
     process.kill(pid, 0);
     return true;
   } catch (err: any) {
-    return err.code === 'EPERM';
+    if (err.code === 'ESRCH') {
+      // No such process - genuinely dead.
+      return false;
+    }
+    if (err.code === 'EPERM' || err.code === 'EACCES') {
+      // Process exists but we lack permission to signal it - still alive.
+      return true;
+    }
+    // Unknown/unexpected error: don't assume the process is dead, since
+    // acquireLock() uses this result to decide whether to steal another
+    // process's lockfile. Log it and err on the side of "alive" so we
+    // don't clear a lock that's still legitimately held.
+    console.error(`isProcessAlive: unexpected error checking pid ${pid}:`, err);
+    return true;
   }
 }
 
@@ -304,12 +337,13 @@ export async function acquireLock(
   }
 
   try {
-    const handle = await fsp.open(absLock, 'wx');
+    const handle = await fsp.open(absLock, 'wx', 0o600);
     await handle.writeFile(
       JSON.stringify({ pid: process.pid, timestamp: new Date().toISOString() }),
       'utf-8'
     );
     await handle.close();
+    await chmodBestEffort(absLock, 0o600);
 
     return {
       acquired: true,
@@ -329,15 +363,41 @@ export async function acquireLock(
   }
 }
 
+export interface WithLockOptions {
+  onBusy?: () => void;
+  /**
+   * How long to keep retrying to acquire the lock before giving up, in ms.
+   * Default 0 = a single attempt, no retry (matches the original
+   * behavior - appropriate for a long-running watcher, which will simply
+   * pick the change up again on its next debounce). One-shot CLI writers
+   * should pass a few seconds here so a brief overlap with another
+   * agentsync process resolves itself instead of silently no-op'ing.
+   */
+  maxWaitMs?: number;
+  /** Delay between retry attempts, in ms. Default 100. */
+  pollIntervalMs?: number;
+}
+
 /**
- * Runs an async operation with a lockfile
+ * Runs an async operation with a lockfile. Returns null (fn is never
+ * called) if the lock could not be acquired within maxWaitMs - callers
+ * MUST check for null rather than assuming fn ran, since that's the only
+ * signal that the write was skipped due to lock contention.
  */
 export async function withLock<T>(
   lockFilePath: string,
   fn: () => Promise<T>,
-  onBusy?: () => void
+  options: WithLockOptions = {}
 ): Promise<T | null> {
-  const lock = await acquireLock(lockFilePath);
+  const { onBusy, maxWaitMs = 0, pollIntervalMs = 100 } = options;
+  const deadline = Date.now() + maxWaitMs;
+
+  let lock = await acquireLock(lockFilePath);
+  while (!lock.acquired && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    lock = await acquireLock(lockFilePath);
+  }
+
   if (!lock.acquired) {
     if (onBusy) onBusy();
     return null;

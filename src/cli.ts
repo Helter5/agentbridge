@@ -176,6 +176,8 @@ program
       (selectedSkillIds as string[]).includes(s.id)
     );
 
+    let anyFailure = false;
+
     if (selectedSkills.length > 0) {
       const targetDir = options.target || hubPath;
       const s = p.spinner();
@@ -189,6 +191,7 @@ program
         p.log.success(`Imported: ${pc.bold(imported)} ${icons.arrow} ${contractHome(targetDir)}`);
       }
       for (const failed of importResult.failedSkills) {
+        anyFailure = true;
         p.log.error(`Failed ${failed.name}: ${failed.error}`);
       }
     } else {
@@ -216,13 +219,24 @@ program
         const s = p.spinner();
         s.start('Synchronizing selected MCP servers...');
         const { syncMcpConfigs } = await import('./core/mcp-sync.js');
-        await syncMcpConfigs(agents, { backupExisting: true });
-        s.stop('MCP servers synchronized!');
-        p.log.success(`Mirrored ${(selectedMcp as string[]).length} MCP server(s) to all agent configs.`);
+        try {
+          await syncMcpConfigs(agents, { backupExisting: true });
+          s.stop('MCP servers synchronized!');
+          p.log.success(`Mirrored ${(selectedMcp as string[]).length} MCP server(s) to all agent configs.`);
+        } catch (err: any) {
+          anyFailure = true;
+          s.stop('MCP synchronization failed.');
+          p.log.error(err.message || String(err));
+        }
       }
     }
 
-    p.outro(pc.green('✔ Selective import finished successfully!'));
+    if (anyFailure) {
+      process.exitCode = 1;
+      p.outro(pc.red('✖ Selective import finished with errors - see above.'));
+    } else {
+      p.outro(pc.green('✔ Selective import finished successfully!'));
+    }
   });
 
 /**
@@ -349,11 +363,19 @@ program
     const s = p.spinner();
     s.start('Merging and updating MCP configuration files...');
 
-    const summary = await syncMcpConfigs(agents, {
-      dryRun: options.dryRun,
-      outputPath: options.output,
-      backupExisting: true,
-    });
+    let summary;
+    try {
+      summary = await syncMcpConfigs(agents, {
+        dryRun: options.dryRun,
+        outputPath: options.output,
+        backupExisting: true,
+      });
+    } catch (err: any) {
+      s.stop('MCP synchronization failed.');
+      p.outro(pc.red(`✖ ${err.message || String(err)}`));
+      process.exitCode = 1;
+      return;
+    }
 
     s.stop('MCP synchronization complete!');
 
@@ -419,12 +441,21 @@ program
     const s = p.spinner();
     s.start('Synchronizing project rule files...');
 
-    const result = await syncProjectRules(projectRoot, {
-      mode: options.mode as 'symlink' | 'copy',
-    });
+    let result;
+    try {
+      result = await syncProjectRules(projectRoot, {
+        mode: options.mode as 'symlink' | 'copy',
+      });
+    } catch (err: any) {
+      s.stop('Rule synchronization failed.');
+      p.outro(pc.red(`✖ ${err.message || String(err)}`));
+      process.exitCode = 1;
+      return;
+    }
 
     s.stop('Rule consolidation complete!');
 
+    let anyFailed = false;
     for (const target of result.targets) {
       if (target.action === 'symlinked') {
         p.log.success(`${pc.bold(target.fileName)}: Symlinked to source`);
@@ -433,11 +464,17 @@ program
       } else if (target.action === 'skipped') {
         p.log.info(`${pc.bold(target.fileName)}: Source file (skipped)`);
       } else {
+        anyFailed = true;
         p.log.error(`${pc.bold(target.fileName)}: Failed (${target.error})`);
       }
     }
 
-    p.outro(pc.green('✔ Project agent rules synchronized!'));
+    if (anyFailed) {
+      process.exitCode = 1;
+      p.outro(pc.red('✖ Rule synchronization finished with errors - see above.'));
+    } else {
+      p.outro(pc.green('✔ Project agent rules synchronized!'));
+    }
   });
 
 /**
@@ -474,12 +511,20 @@ program
     const s = p.spinner();
     s.start(`Creating skill ${name}...`);
 
-    const result = await createNewSkill(name, {
-      description,
-      author: options.author,
-      tags,
-      hubPath: options.hub,
-    });
+    let result;
+    try {
+      result = await createNewSkill(name, {
+        description,
+        author: options.author,
+        tags,
+        hubPath: options.hub,
+      });
+    } catch (err: any) {
+      s.stop('Skill creation failed.');
+      p.outro(pc.red(`✖ ${err.message || String(err)}`));
+      process.exitCode = 1;
+      return;
+    }
 
     s.stop('Skill created!');
 

@@ -6,13 +6,19 @@ import {
   readLinkTarget,
   createCrossPlatformLink,
   ensureDir,
+  withLock,
+  expandHome,
 } from '../utils/fs.js';
 import type { RuleTarget, RuleSyncResult, RuleTargetType } from '../types/rules.js';
 import {
   RULE_TARGET_FILES,
   AUTO_GENERATED_HEADER,
   RULE_SOURCE_CANDIDATES,
+  DEFAULT_LOCK_PATH,
+  LOCK_RETRY_MAX_WAIT_MS,
 } from '../constants.js';
+
+const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 
 export { RULE_TARGET_FILES, AUTO_GENERATED_HEADER, RULE_SOURCE_CANDIDATES };
 
@@ -113,8 +119,22 @@ Welcome to the AI Agent Guide for ${projectName}. This file acts as the universa
 2. Follow strict typing and comprehensive error handling.
 `;
 
-  await ensureDir(path.dirname(agentsMdPath));
-  await fsp.writeFile(agentsMdPath, defaultContent, 'utf-8');
+  const wrote = await withLock(
+    lockFilePath,
+    async () => {
+      await ensureDir(path.dirname(agentsMdPath));
+      await fsp.writeFile(agentsMdPath, defaultContent, 'utf-8');
+    },
+    { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
+  );
+  if (wrote === null) {
+    // withLock() never runs the callback when it can't get the lock - it
+    // does NOT queue and retry later, so silently returning agentsMdPath
+    // here would tell the caller a file was created that never was.
+    throw new Error(
+      `Could not create AGENTS.md at ${agentsMdPath}: another agentsync process is currently modifying configs. Try again in a moment.`
+    );
+  }
   return agentsMdPath;
 }
 
@@ -165,7 +185,18 @@ export async function syncProjectRules(
         } else {
           // Fallback to copy
           const contentToWrite = `${AUTO_GENERATED_HEADER}${sourceContent}`;
-          await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
+          const wrote = await withLock(
+            lockFilePath,
+            async () => {
+              await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
+            },
+            { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
+          );
+          if (wrote === null) {
+            throw new Error(
+              'Another agentsync process is currently modifying configs. Try again in a moment.'
+            );
+          }
           results.push({
             fileName: relPath,
             filePath: targetPath,
@@ -174,12 +205,23 @@ export async function syncProjectRules(
         }
       } else {
         // Copy mode
-        const isLink = await isSymlinkOrJunction(targetPath);
-        if (isLink) {
-          await fsp.unlink(targetPath);
-        }
         const contentToWrite = `${AUTO_GENERATED_HEADER}${sourceContent}`;
-        await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
+        const wrote = await withLock(
+          lockFilePath,
+          async () => {
+            const isLink = await isSymlinkOrJunction(targetPath);
+            if (isLink) {
+              await fsp.unlink(targetPath);
+            }
+            await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
+          },
+          { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
+        );
+        if (wrote === null) {
+          throw new Error(
+            'Another agentsync process is currently modifying configs. Try again in a moment.'
+          );
+        }
         results.push({
           fileName: relPath,
           filePath: targetPath,
