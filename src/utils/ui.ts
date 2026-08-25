@@ -114,9 +114,9 @@ export function badge(text: string, type: 'success' | 'warning' | 'error' | 'inf
 export const icons = {
   success: pc.green('✔'),
   error: pc.red('✖'),
-  warning: pc.yellow('⚠'),
-  info: pc.cyan('ℹ'),
-  arrow: pc.dim('→'),
+  warning: pc.yellow('!'),
+  info: pc.cyan('i'),
+  arrow: pc.dim('->'),
   bullet: pc.dim('•'),
-  link: pc.blue('🔗'),
+  link: pc.cyan('>'),
 };

@@ -32,11 +32,11 @@ jobs:
       - name: Typecheck
         run: npm run lint
 
-      - name: Run Vitest Unit Tests
-        run: npm test
-
       - name: Build Binary
         run: npm run build
+
+      - name: Run Vitest Unit Tests
+        run: npm test
 
       - name: Verify CLI Binary Execution
         run: |

@@ -1,4 +1,4 @@
-# AgentSync ⚡
+# AgentSync
 
 [![CI](https://github.com/agentsync-dev/agentsync/actions/workflows/ci.yml/badge.svg)](https://github.com/agentsync-dev/agentsync/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/agentsync.svg?style=flat&color=3b82f6)](https://www.npmjs.com/package/agentsync)
@@ -6,30 +6,30 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
 
-**Universal Skill & MCP Sync Engine for AI Coding Agents.**  
-Effortlessly unify, link, and mirror custom **Skills**, **Model Context Protocol (MCP) servers**, and **Project Rules** across **Google Antigravity**, **Claude Code**, **OpenAI Codex**, and **Cursor** on macOS, Linux, and Windows.
+Universal Skill & MCP Sync Engine for AI Coding Agents.
+
+Unify, link, and mirror custom **Skills**, **Model Context Protocol (MCP) servers**, and **Project Rules** across **Google Antigravity**, **Claude Code**, **OpenAI Codex**, and **Cursor** on macOS, Linux, and Windows.
 
 ---
 
-## 🎯 The Problem: Why AgentSync?
+## Overview
 
-AI Coding Agents have rapidly evolved into distinct ecosystems:
-- **Google Antigravity** keeps skills in `~/.gemini/config/skills` and MCP configurations in `mcp_config.json`.
+AI Coding Agents utilize distinct filesystem hierarchies and configuration specifications:
+- **Google Antigravity** stores skills in `~/.gemini/config/skills` and MCP configurations in `mcp_config.json`.
 - **Claude Code** manages skills in `~/.claude/skills` and desktop MCP servers in `claude_desktop_config.json`.
-- **OpenAI Codex** stores skills in `~/.codex/skills` and settings in `~/.codex/config.json`.
+- **OpenAI Codex** stores skills in `~/.codex/skills` and configurations in `~/.codex/config.json`.
 - **Cursor** configures MCP servers and skills in `~/.cursor/`.
 
-**The result?** Developers face constant duplication, out-of-sync instructions, conflicting tool definitions, and fragmented agent skills across their machine.
-
-**AgentSync solves this forever:**
+AgentSync standardizes configurations across all environments:
 1. **Single Source of Truth**: Establishes a unified hub at `~/.agentsync/skills`.
 2. **Cross-Platform Zero-Privilege Linking**: Uses POSIX Symlinks on macOS/Linux and NTFS Directory Junctions on Windows (no elevated Administrator privileges required).
 3. **Lossless MCP Server Merging**: Deep-merges environment variables, arguments, and server configs across all client configuration files without clobbering custom agent settings.
 4. **Universal Project Rules**: Automatically consolidates and synchronizes `AGENTS.md` to `CLAUDE.md`, `GEMINI.md`, and `.cursorrules`.
+5. **Transactional Rollbacks**: Automated snapshot backups before multi-agent synchronization with full restoration on failure.
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```mermaid
 flowchart TD
@@ -41,6 +41,8 @@ flowchart TD
         MCPSync[MCP Synchronizer]
         Rules[Rule Consolidator]
         Doctor[Health Diagnostics]
+        Rollback[Backup & Rollback]
+        Watcher[Live File Watcher]
     end
     
     Hub <== "Cross-Platform Junction / Symlink" ==> G[Google Antigravity<br/>~/.gemini]
@@ -56,9 +58,9 @@ flowchart TD
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
-Run directly without installation using `npx`:
+Run directly without global installation using `npx`:
 
 ```bash
 # Check detected agents, active skills, and MCP servers
@@ -85,7 +87,7 @@ npm install -g agentsync
 
 ---
 
-## 💻 CLI Commands
+## CLI Reference
 
 ### 1. `agentsync status`
 Scans the system and presents an ASCII table overview of all installed AI coding agents, skills counts, hub linking status, and configured MCP servers.
@@ -152,10 +154,11 @@ agentsync unlink
 ```
 
 ### 9. `agentsync rollback`
-Lists timestamped backup snapshots from `~/.agentsync/backups/` and restores configs to an earlier state.
+Lists timestamped backup snapshots from `~/.agentsync/backups/` and restores configurations to an earlier state.
 
 ```bash
 agentsync rollback
+agentsync rollback --list  # List all available snapshots
 ```
 
 ### 10. `agentsync watch`
@@ -167,7 +170,7 @@ agentsync watch
 
 ---
 
-## 🌐 Supported Agents & Matrix
+## Supported Agents
 
 | AI Coding Agent | Config Directory | Skills Directory | MCP Config Path | Rules Target |
 |---|---|---|---|---|
@@ -178,19 +181,19 @@ agentsync watch
 
 ---
 
-## 🪟 Cross-Platform Support
+## Cross-Platform Support
 
 | Operating System | Skills Linking Strategy | Administrator Privileges Required? | Status |
 |---|---|---|:---:|
-| **macOS** (Apple Silicon / Intel) | POSIX Symbolic Links (`dir`) | ❌ No | ✅ Supported |
-| **Linux** (Ubuntu / Fedora / Arch) | POSIX Symbolic Links (`dir`) | ❌ No | ✅ Supported |
-| **Windows 10 / 11** | NTFS Directory Junctions (`junction`) | ❌ No | ✅ Supported |
+| **macOS** (Apple Silicon / Intel) | POSIX Symbolic Links (`dir`) | No | Supported |
+| **Linux** (Ubuntu / Fedora / Arch) | POSIX Symbolic Links (`dir`) | No | Supported |
+| **Windows 10 / 11** | NTFS Directory Junctions (`junction`) | No | Supported |
 
 ---
 
-## 📦 Programmatic TypeScript SDK
+## Programmatic TypeScript SDK
 
-You can also import and use `agentsync` directly in Node.js / TypeScript scripts:
+You can import and use `agentsync` directly in Node.js / TypeScript code:
 
 ```typescript
 import {
@@ -203,7 +206,6 @@ import {
 
 // 1. Detect installed agents
 const agents = await detectInstalledAgents();
-console.log(`Found ${agents.filter(a => a.isInstalled).length} installed agents`);
 
 // 2. Link skills to central hub
 const linkSummary = await linkAgentsToHub(agents);
@@ -213,17 +215,16 @@ const mcpSummary = await syncMcpConfigs(agents);
 
 // 4. Run diagnostics
 const report = await runDiagnostics();
-console.log(`Health status: ${report.summary.passed}/${report.summary.total} checks passed`);
 ```
 
 ---
 
-## 🧪 Testing & Development
+## Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/agentsync-dev/agentsync.git
-cd connector
+# Clone repository
+git clone https://github.com/Helter5/agentsync.git
+cd agentsync
 
 # Install dependencies
 npm install
@@ -243,6 +244,6 @@ node dist/cli.js status
 
 ---
 
-## 📄 License
+## License
 
-MIT © [AgentSync Contributors](LICENSE)
+MIT (c) AgentSync Contributors

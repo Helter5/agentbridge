@@ -67,7 +67,7 @@ program
 
     printBanner();
 
-    console.log(pc.bold('📁 System Overview'));
+    console.log(pc.bold('System Overview'));
     console.log(formatStatusLine('Skills Hub', contractHome(hubPath), 'ok'));
     console.log(
       formatStatusLine('Total Hub Skills', `${hubSkills.length} active`, 'ok')
@@ -81,7 +81,7 @@ program
     );
     console.log('');
 
-    console.log(pc.bold('🤖 Detected AI Coding Agents\n'));
+    console.log(pc.bold('Detected AI Coding Agents\n'));
 
     const tableRows = agents.map((agent) => {
       let statusBadge = pc.dim('Not Found');
@@ -511,7 +511,7 @@ program
     const report = await runDiagnostics({ hubPath: options.hub });
     s.stop('Diagnostics finished!\n');
 
-    console.log(pc.bold('🩺 Diagnostic Health Report:'));
+    console.log(pc.bold('Diagnostic Health Report:'));
     for (const check of report.checks) {
       let icon = icons.success;
       if (check.status === 'warning') icon = icons.warning;
@@ -630,7 +630,7 @@ program
     }
 
     if (options.list) {
-      console.log(pc.bold('📦 Available Backup Snapshots:\n'));
+      console.log(pc.bold('Available Backup Snapshots:\n'));
       for (const s of snapshots) {
         console.log(`  ${pc.cyan(s.id)}`);
         console.log(`    ${pc.bold(s.description)}`);

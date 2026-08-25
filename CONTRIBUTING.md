@@ -1,12 +1,12 @@
-# Contributing to AgentSync ⚡
+# Contributing to AgentSync
 
-Thank you for your interest in contributing to **AgentSync**! This document provides guidelines and architectural context to help you get started quickly.
+Guidelines and architectural context for contributing to **AgentSync**.
 
 ---
 
-## 🏗️ Architecture: The 5 Core Engines
+## Architecture: Core Engines
 
-AgentSync is organized into 5 modular TypeScript engines in `src/core/`:
+AgentSync is organized into modular TypeScript engines in `src/core/`:
 
 ```
 src/
@@ -32,7 +32,7 @@ src/
 
 ---
 
-## 🛠️ Local Development Workflow
+## Local Development Workflow
 
 ### 1. Prerequisites
 - Node.js >= 18.0.0
@@ -41,8 +41,8 @@ src/
 ### 2. Setup
 ```bash
 # Clone the repository
-git clone https://github.com/agentsync-dev/agentsync.git
-cd connector
+git clone https://github.com/Helter5/agentsync.git
+cd agentsync
 
 # Install dependencies
 npm install
@@ -67,14 +67,13 @@ npm run build
 
 ---
 
-## 🧪 Testing Guidelines
+## Testing Guidelines
 - All new features or bug fixes must include accompanying tests in `tests/`.
 - Tests must be isolated and avoid mutating the actual user home directory (use temporary directories).
 - Verify cross-platform symlink and junction behavior across Windows, macOS, and Linux.
 
 ---
 
-## 📜 Pull Request Guidelines
+## Pull Request Guidelines
 - Follow conventional commit messages: `feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`.
 - Ensure `npm run lint && npm test && npm run build` passes with zero errors before submitting.
-
