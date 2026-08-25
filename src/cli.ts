@@ -307,10 +307,18 @@ program
     const s = p.spinner();
     s.start('Synchronizing skills and creating cross-platform links...');
 
-    const summary = await linkAgentsToHub(installed, hubPath, {
-      dryRun: options.dryRun,
-      backupExisting: options.backup !== false,
-    });
+    let summary;
+    try {
+      summary = await linkAgentsToHub(installed, hubPath, {
+        dryRun: options.dryRun,
+        backupExisting: options.backup !== false,
+      });
+    } catch (err: any) {
+      s.stop('Skills synchronization failed.');
+      p.outro(pc.red(`✖ ${err.message || String(err)}`));
+      process.exitCode = 1;
+      return;
+    }
 
     s.stop('Skills synchronization complete!');
 
@@ -656,6 +664,18 @@ program
       p.outro(pc.green('✔ System is healthy!'));
     } else {
       p.outro(pc.yellow('⚠ Found issues requiring attention.'));
+    }
+
+    // Separate from the message above (unchanged): without --fix, real
+    // problems are left exactly as found on disk, so a script relying on
+    // the exit code (e.g. `agentbridge doctor && deploy`) shouldn't
+    // proceed past them. Broken links, exposed secrets, and skill-name
+    // collisions are all reported at `warning` severity (not `errors`),
+    // so this checks both - `errors` alone would miss every one of them.
+    // --fix having just run its own repair pass keeps this at 0, matching
+    // its own success/failure reporting a few lines above.
+    if (!options.fix && (report.summary.errors > 0 || report.summary.warnings > 0)) {
+      process.exitCode = 1;
     }
   });
 
