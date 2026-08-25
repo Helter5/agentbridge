@@ -5,10 +5,10 @@ import os from 'node:os';
 import { DEFAULT_LOCK_PATH } from '../constants.js';
 
 /**
- * Resolves the single shared lockfile every agentsync writer (CLI
+ * Resolves the single shared lockfile every agentbridge writer (CLI
  * commands, watcher, rollback snapshots) contends on. Honors
- * AGENTSYNC_LOCK_PATH so tests can point it at an isolated tmpdir instead
- * of the real ~/.agentsync/.lock, without any FS-level mocking.
+ * AGENTBRIDGE_LOCK_PATH so tests can point it at an isolated tmpdir instead
+ * of the real ~/.agentbridge/.lock, without any FS-level mocking.
  *
  * Deliberately NOT memoized into a module-level constant: callers that
  * did that (frozen at first import) could never pick up a test's env
@@ -16,7 +16,7 @@ import { DEFAULT_LOCK_PATH } from '../constants.js';
  * Call this at the point of use instead.
  */
 export function resolveSharedLockPath(): string {
-  return path.resolve(expandHome(process.env.AGENTSYNC_LOCK_PATH || DEFAULT_LOCK_PATH));
+  return path.resolve(expandHome(process.env.AGENTBRIDGE_LOCK_PATH || DEFAULT_LOCK_PATH));
 }
 
 /**
@@ -387,7 +387,7 @@ export interface WithLockOptions {
    * behavior - appropriate for a long-running watcher, which will simply
    * pick the change up again on its next debounce). One-shot CLI writers
    * should pass a few seconds here so a brief overlap with another
-   * agentsync process resolves itself instead of silently no-op'ing.
+   * agentbridge process resolves itself instead of silently no-op'ing.
    */
   maxWaitMs?: number;
   /** Delay between retry attempts, in ms. Default 100. */

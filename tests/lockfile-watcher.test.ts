@@ -6,7 +6,7 @@ import { acquireLock, withLock, ensureDir, isProcessAlive, resolveSharedLockPath
 import { DEFAULT_LOCK_PATH } from '../src/constants.js';
 
 describe('Lockfile and Concurrency Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-lock-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-lock-test-${Date.now()}`);
 
   beforeEach(async () => {
     await ensureDir(tempDir);
@@ -220,20 +220,20 @@ describe('Lockfile and Concurrency Engine', () => {
     expect(result).toBe('ran');
   });
 
-  it('resolveSharedLockPath() honors AGENTSYNC_LOCK_PATH, falling back to the real default when unset', () => {
-    const original = process.env.AGENTSYNC_LOCK_PATH;
+  it('resolveSharedLockPath() honors AGENTBRIDGE_LOCK_PATH, falling back to the real default when unset', () => {
+    const original = process.env.AGENTBRIDGE_LOCK_PATH;
     try {
-      delete process.env.AGENTSYNC_LOCK_PATH;
+      delete process.env.AGENTBRIDGE_LOCK_PATH;
       const defaultResolved = resolveSharedLockPath();
       expect(defaultResolved).not.toBe(DEFAULT_LOCK_PATH); // expanded/resolved, not the raw "~/..." string
       expect(defaultResolved.endsWith('.lock')).toBe(true);
 
       const override = path.join(tempDir, 'override.lock');
-      process.env.AGENTSYNC_LOCK_PATH = override;
+      process.env.AGENTBRIDGE_LOCK_PATH = override;
       expect(resolveSharedLockPath()).toBe(path.resolve(override));
     } finally {
-      if (original === undefined) delete process.env.AGENTSYNC_LOCK_PATH;
-      else process.env.AGENTSYNC_LOCK_PATH = original;
+      if (original === undefined) delete process.env.AGENTBRIDGE_LOCK_PATH;
+      else process.env.AGENTBRIDGE_LOCK_PATH = original;
     }
   });
 });

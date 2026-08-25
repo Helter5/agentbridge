@@ -12,7 +12,7 @@ import { ensureDir, isSymlinkOrJunction, pathExists } from '../src/utils/fs.js';
 import type { DetectedAgent } from '../src/types/client.js';
 
 describe('Unlink and Collision Detection Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-unlink-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-unlink-test-${Date.now()}`);
   const tempHub = path.join(tempDir, 'hub');
 
   beforeEach(async () => {

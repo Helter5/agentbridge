@@ -1,7 +1,7 @@
-# AgentSync
+# AgentBridge
 
-[![CI](https://github.com/Helter5/agentsync/actions/workflows/ci.yml/badge.svg)](https://github.com/Helter5/agentsync/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/agentsync.svg?style=flat&color=3b82f6)](https://www.npmjs.com/package/agentsync)
+[![CI](https://github.com/Helter5/agentbridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Helter5/agentbridge/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/agentbridge.svg?style=flat&color=3b82f6)](https://www.npmjs.com/package/agentbridge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
@@ -20,8 +20,8 @@ AI Coding Agents utilize distinct filesystem hierarchies and configuration speci
 - **OpenAI Codex** stores skills in `~/.codex/skills` and configurations in `~/.codex/config.json`.
 - **Cursor** configures MCP servers and skills in `~/.cursor/`.
 
-AgentSync standardizes configurations across all environments:
-1. **Single Source of Truth**: Establishes a unified hub at `~/.agentsync/skills`.
+AgentBridge standardizes configurations across all environments:
+1. **Single Source of Truth**: Establishes a unified hub at `~/.agentbridge/skills`.
 2. **Cross-Platform Zero-Privilege Linking**: Uses POSIX Symlinks on macOS/Linux and NTFS Directory Junctions on Windows (no elevated Administrator privileges required).
 3. **Lossless MCP Server Merging**: Deep-merges environment variables, arguments, and server configs across all client configuration files without clobbering custom agent settings.
 4. **Universal Project Rules**: Automatically consolidates and synchronizes `AGENTS.md` to `CLAUDE.md`, `GEMINI.md`, and `.cursorrules`.
@@ -33,7 +33,7 @@ AgentSync standardizes configurations across all environments:
 
 ```mermaid
 flowchart TD
-    CLI[agentsync CLI / SDK] --> Hub[(~/.agentsync/skills Hub)]
+    CLI[agentbridge CLI / SDK] --> Hub[(~/.agentbridge/skills Hub)]
     
     subgraph Core Engine
         Detector[Client Detector]
@@ -64,108 +64,108 @@ Run directly without global installation using `npx`:
 
 ```bash
 # Check detected agents, active skills, and MCP servers
-npx agentsync status
+npx agentbridge status
 
 # Interactively pick and selectively import skills / MCPs
-npx agentsync pick
+npx agentbridge pick
 
 # Merge and link skills across all detected agents
-npx agentsync link-skills
+npx agentbridge link-skills
 
 # Mirror and synchronize MCP servers across all agent configs
-npx agentsync sync-mcp
+npx agentbridge sync-mcp
 
 # Verify symlink integrity, schemas, and permissions
-npx agentsync doctor
+npx agentbridge doctor
 ```
 
 Or install globally:
 
 ```bash
-npm install -g agentsync
+npm install -g agentbridge
 ```
 
 ---
 
 ## CLI Reference
 
-### 1. `agentsync status`
+### 1. `agentbridge status`
 Scans the system and presents an ASCII table overview of all installed AI coding agents, skills counts, hub linking status, and configured MCP servers.
 
 ```bash
-agentsync status
-agentsync status --json    # Output machine-readable JSON
+agentbridge status
+agentbridge status --json    # Output machine-readable JSON
 ```
 
-### 2. `agentsync pick` (or `agentsync import`)
+### 2. `agentbridge pick` (or `agentbridge import`)
 Interactively multiselect which skills, commands, or MCP servers to import into your active environment.
 
 ```bash
-agentsync pick
+agentbridge pick
 ```
 
-### 3. `agentsync link-skills`
-Migrates existing skills into the central hub (`~/.agentsync/skills`) without data loss, then creates transparent directory junctions (Windows) or symbolic links (macOS/Linux).
+### 3. `agentbridge link-skills`
+Migrates existing skills into the central hub (`~/.agentbridge/skills`) without data loss, then creates transparent directory junctions (Windows) or symbolic links (macOS/Linux).
 
 ```bash
-agentsync link-skills
-agentsync link-skills --dry-run     # Preview actions without modifying disk
-agentsync link-skills -y            # Skip confirmation prompt
+agentbridge link-skills
+agentbridge link-skills --dry-run     # Preview actions without modifying disk
+agentbridge link-skills -y            # Skip confirmation prompt
 ```
 
-### 4. `agentsync sync-mcp`
+### 4. `agentbridge sync-mcp`
 Safely reads MCP server declarations across all detected client configuration files, deep-merges environment variables, command arguments, and server keys, then mirrors them across all agents.
 
 ```bash
-agentsync sync-mcp
-agentsync sync-mcp --output ./mcp-unified.json    # Export merged config to standalone file
-agentsync sync-mcp -y
+agentbridge sync-mcp
+agentbridge sync-mcp --output ./mcp-unified.json    # Export merged config to standalone file
+agentbridge sync-mcp -y
 ```
 
-### 5. `agentsync sync-rules`
+### 5. `agentbridge sync-rules`
 Synchronizes project-level agent rules. Reads `AGENTS.md` as the single source-of-truth and mirrors or symlinks it to `CLAUDE.md`, `GEMINI.md`, and `.cursorrules`.
 
 ```bash
-agentsync sync-rules
-agentsync sync-rules --mode symlink    # Create symlinks instead of auto-sync copies
-agentsync sync-rules --cwd ./my-repo
+agentbridge sync-rules
+agentbridge sync-rules --mode symlink    # Create symlinks instead of auto-sync copies
+agentbridge sync-rules --cwd ./my-repo
 ```
 
-### 6. `agentsync add-skill <name>`
+### 6. `agentbridge add-skill <name>`
 Scaffolds a new skill directory in the central hub with a standard `SKILL.md` template containing YAML frontmatter.
 
 ```bash
-agentsync add-skill database-migration --desc "Automated PostgreSQL schema migration recipes" --tags db,sql,migrations
+agentbridge add-skill database-migration --desc "Automated PostgreSQL schema migration recipes" --tags db,sql,migrations
 ```
 
-### 7. `agentsync doctor`
+### 7. `agentbridge doctor`
 Runs health diagnostics: audits plain-text tokens and secrets in MCP configs, detects skill name collisions, checks junction integrity, and repairs broken links with `--fix`.
 
 ```bash
-agentsync doctor
-agentsync doctor --fix     # Automatically repair broken links and missing folders
+agentbridge doctor
+agentbridge doctor --fix     # Automatically repair broken links and missing folders
 ```
 
-### 8. `agentsync unlink`
+### 8. `agentbridge unlink`
 Safely disconnects agents from the central hub, removing junctions/symlinks and restoring independent directories with copies of hub skills.
 
 ```bash
-agentsync unlink
+agentbridge unlink
 ```
 
-### 9. `agentsync rollback`
-Lists timestamped backup snapshots from `~/.agentsync/backups/` and restores configurations to an earlier state.
+### 9. `agentbridge rollback`
+Lists timestamped backup snapshots from `~/.agentbridge/backups/` and restores configurations to an earlier state.
 
 ```bash
-agentsync rollback
-agentsync rollback --list  # List all available snapshots
+agentbridge rollback
+agentbridge rollback --list  # List all available snapshots
 ```
 
-### 10. `agentsync watch`
+### 10. `agentbridge watch`
 Starts a lightweight live file watcher that monitors the central skills hub and workspace `AGENTS.md`, automatically synchronizing changes in real time.
 
 ```bash
-agentsync watch
+agentbridge watch
 ```
 
 ---
@@ -193,7 +193,7 @@ agentsync watch
 
 ## Programmatic TypeScript SDK
 
-You can import and use `agentsync` directly in Node.js / TypeScript code:
+You can import and use `agentbridge` directly in Node.js / TypeScript code:
 
 ```typescript
 import {
@@ -202,7 +202,7 @@ import {
   syncMcpConfigs,
   syncProjectRules,
   runDiagnostics,
-} from 'agentsync';
+} from 'agentbridge';
 
 // 1. Detect installed agents
 const agents = await detectInstalledAgents();
@@ -223,8 +223,8 @@ const report = await runDiagnostics();
 
 ```bash
 # Clone repository
-git clone https://github.com/Helter5/agentsync.git
-cd agentsync
+git clone https://github.com/Helter5/agentbridge.git
+cd agentbridge
 
 # Install dependencies
 npm install
@@ -246,4 +246,4 @@ node dist/cli.js status
 
 ## License
 
-MIT (c) AgentSync Contributors
+MIT (c) AgentBridge Contributors

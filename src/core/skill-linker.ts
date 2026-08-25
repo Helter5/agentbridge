@@ -349,7 +349,7 @@ export async function createNewSkill(
     // does NOT queue and retry later, so proceeding here would report a
     // skill as created when SKILL.md was never actually written.
     throw new Error(
-      `Could not create skill '${name}': another agentsync process is currently modifying configs. Try again in a moment.`
+      `Could not create skill '${name}': another agentbridge process is currently modifying configs. Try again in a moment.`
     );
   }
 
@@ -527,7 +527,7 @@ export async function selectivelyImportSkills(
           // - pushing to importedSkills below would report success for a
           // file that was never written.
           throw new Error(
-            'Another agentsync process is currently modifying configs. Try again in a moment.'
+            'Another agentbridge process is currently modifying configs. Try again in a moment.'
           );
         }
       }

@@ -11,7 +11,7 @@ import {
 import { ensureDir, pathExists, acquireLock } from '../src/utils/fs.js';
 
 describe('Rollback & Snapshot Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-rollback-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-rollback-test-${Date.now()}`);
 
   beforeEach(async () => {
     await ensureDir(tempDir);
@@ -44,18 +44,18 @@ describe('Rollback & Snapshot Engine', () => {
 
   it('createBackupSnapshot() retries past a concurrently-held shared lock instead of silently skipping the write', async () => {
     // createBackupSnapshot() locks on the same shared lockfile every
-    // agentsync writer uses (resolveSharedLockPath() in utils/fs.ts).
-    // AGENTSYNC_LOCK_PATH points that at an isolated tmpdir file for this
-    // test instead of the real ~/.agentsync/.lock, so this test can't
-    // collide with an agentsync command a developer happens to be running
+    // agentbridge writer uses (resolveSharedLockPath() in utils/fs.ts).
+    // AGENTBRIDGE_LOCK_PATH points that at an isolated tmpdir file for this
+    // test instead of the real ~/.agentbridge/.lock, so this test can't
+    // collide with an agentbridge command a developer happens to be running
     // in another terminal while the suite executes. Hold that lock
     // externally - simulating a watcher mid-write - and prove
     // createBackupSnapshot() waits it out and actually persists the
     // snapshot to disk, rather than the pre-fix behavior of returning a
     // "snapshot" object that was never written because the lock was busy.
     const isolatedLockPath = path.join(tempDir, 'test.lock');
-    const originalLockPathEnv = process.env.AGENTSYNC_LOCK_PATH;
-    process.env.AGENTSYNC_LOCK_PATH = isolatedLockPath;
+    const originalLockPathEnv = process.env.AGENTBRIDGE_LOCK_PATH;
+    process.env.AGENTBRIDGE_LOCK_PATH = isolatedLockPath;
 
     try {
       const heldLock = await acquireLock(isolatedLockPath);
@@ -87,16 +87,16 @@ describe('Rollback & Snapshot Engine', () => {
 
       // Clean up the snapshot file this test wrote to the (real) shared
       // backups directory - don't leave test artifacts in the user's
-      // ~/.agentsync/backups. Only the lockfile itself is isolated by
-      // AGENTSYNC_LOCK_PATH; the backups directory is a separate,
+      // ~/.agentbridge/backups. Only the lockfile itself is isolated by
+      // AGENTBRIDGE_LOCK_PATH; the backups directory is a separate,
       // non-contended path (concurrent writers there don't race the way
       // a mutex lockfile does), so it's out of scope for this fix.
       await fsp.unlink(snapshotFile).catch(() => {});
     } finally {
       if (originalLockPathEnv === undefined) {
-        delete process.env.AGENTSYNC_LOCK_PATH;
+        delete process.env.AGENTBRIDGE_LOCK_PATH;
       } else {
-        process.env.AGENTSYNC_LOCK_PATH = originalLockPathEnv;
+        process.env.AGENTBRIDGE_LOCK_PATH = originalLockPathEnv;
       }
     }
   }, 6000);
