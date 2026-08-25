@@ -695,4 +695,69 @@ describe('Skill Linking Engine', () => {
     expect(summary.linkedAgents[0].success).toBe(true);
     expect(await isSymlinkOrJunction(skillsDir)).toBe(true);
   });
+
+  it('mergeSkillsIntoHub() attaches which agent failed and which were already processed when it throws partway through 3 agents', async () => {
+    // Follow-up to PR #20's link-skills try/catch fix: the fix correctly
+    // stopped an unhandled exception from silently exiting 0 with a
+    // generic "Something went wrong", but the resulting error was still a
+    // bare exception with zero context - identical whether 1 agent or 4
+    // failed, and with no indication that an earlier agent's skills may
+    // already have been merged into the hub (a real, partial disk
+    // mutation) while later agents were never even reached. Reproduces
+    // that exact shape: agent 1 succeeds, agent 2's skillsDir is a plain
+    // file (readdir() throws ENOTDIR), agent 3 is never reached.
+    const agent1Dir = path.join(tempDir, 'agent-1-skills');
+    await ensureDir(path.join(agent1Dir, 'agent-1-skill'));
+    await fsp.writeFile(
+      path.join(agent1Dir, 'agent-1-skill', 'SKILL.md'),
+      '---\nname: agent-1-skill\ndescription: d\n---\n',
+      'utf-8'
+    );
+
+    const agent2Dir = path.join(tempDir, 'agent-2-not-a-dir');
+    await fsp.writeFile(agent2Dir, 'this is a plain file, not a directory', 'utf-8');
+
+    const agent3Dir = path.join(tempDir, 'agent-3-skills');
+    await ensureDir(path.join(agent3Dir, 'agent-3-skill'));
+    await fsp.writeFile(
+      path.join(agent3Dir, 'agent-3-skill', 'SKILL.md'),
+      '---\nname: agent-3-skill\ndescription: d\n---\n',
+      'utf-8'
+    );
+
+    const mkAgent = (id: string, name: string, skillsDir: string): DetectedAgent => ({
+      id,
+      name,
+      displayName: name,
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir },
+      existingSkillsCount: 0,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    });
+
+    const agents = [
+      mkAgent('agent-1', 'Agent One', agent1Dir),
+      mkAgent('agent-2', 'Agent Two', agent2Dir),
+      mkAgent('agent-3', 'Agent Three', agent3Dir),
+    ];
+
+    let caught: any;
+    try {
+      await mergeSkillsIntoHub(agents, tempHub);
+      throw new Error('expected mergeSkillsIntoHub to throw');
+    } catch (err: any) {
+      caught = err;
+    }
+
+    expect(caught.code).toBe('ENOTDIR');
+    expect(caught.agentbridgePartialMergeContext).toEqual({
+      failedAgentName: 'Agent Two',
+      succeededAgentNames: ['Agent One'],
+    });
+
+    // Agent One's skill really was merged into the hub before the throw -
+    // the partial-mutation part of what the error context is warning about.
+    expect(await pathExists(path.join(tempHub, 'agent-1-skill', 'SKILL.md'))).toBe(true);
+  });
 });
