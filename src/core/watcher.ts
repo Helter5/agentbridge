@@ -26,6 +26,11 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
   const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
 
   const watchers: fs.FSWatcher[] = [];
+  // Each timer debounces per watched target (the whole skills directory /
+  // the single AGENTS.md file), not per individual file. Several files
+  // changing within one debounceDelay window collapse into a single fire
+  // carrying only the last fs.watch event's filename - see the two usages
+  // below for why that's safe in each case.
   let skillDebounceTimer: NodeJS.Timeout | null = null;
   let ruleDebounceTimer: NodeJS.Timeout | null = null;
 
@@ -51,6 +56,11 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
           if (skillDebounceTimer) clearTimeout(skillDebounceTimer);
           skillDebounceTimer = setTimeout(async () => {
             await withLock(lockFilePath, async () => {
+              // onSkillChange only surfaces a log message (it doesn't
+              // itself resync anything), so a burst of changes across
+              // several skill files coalescing into one callback with
+              // just the last filename loses nothing but that log line's
+              // precision - no file content is derived from `filename`.
               if (options.onSkillChange) {
                 options.onSkillChange(eventType, filename);
               }
@@ -71,6 +81,14 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
       const rulesWatcher = fs.watch(agentsMd, (eventType) => {
         if (ruleDebounceTimer) clearTimeout(ruleDebounceTimer);
         ruleDebounceTimer = setTimeout(async () => {
+          // Only one file (AGENTS.md) is watched here, so there's no
+          // multi-file coalescing to worry about. syncProjectRules()
+          // re-reads AGENTS.md's full current content on every call
+          // rather than acting on `eventType`/a filename, so even
+          // multiple rapid saves debounced into one fire still produce a
+          // fully up-to-date resync - it doesn't matter how many writes
+          // happened in between, only what the file contains when this
+          // timer fires.
           // syncProjectRules() locks its own writes internally (see rules.ts);
           // no outer withLock here to avoid nesting on the same lockfile.
           await syncProjectRules(projectRoot, { mode: 'copy' });
