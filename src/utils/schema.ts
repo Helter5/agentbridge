@@ -42,6 +42,17 @@ export function parseFrontmatter(markdown: string): {
   frontmatter: SkillFrontmatter | null;
   content: string;
   rawYaml: string | null;
+  /**
+   * True only when a `---`-delimited frontmatter block was actually found
+   * but its YAML failed to parse - distinct from a file that simply has no
+   * frontmatter block at all (the normal case for a plain markdown note,
+   * where `frontmatter: null` carries no error). Callers that would
+   * otherwise silently fall back to regenerating a fresh frontmatter block
+   * (discarding whatever the malformed one contained beyond name/
+   * description) can use this to warn instead of staying silent - see
+   * selectivelyImportSkills()'s markdown_file branch in skill-linker.ts.
+   */
+  hadInvalidFrontmatterBlock: boolean;
 } {
   const normalized = markdown.replace(/\r\n/g, '\n');
   const match = normalized.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -51,6 +62,7 @@ export function parseFrontmatter(markdown: string): {
       frontmatter: null,
       content: markdown,
       rawYaml: null,
+      hadInvalidFrontmatterBlock: false,
     };
   }
 
@@ -63,12 +75,14 @@ export function parseFrontmatter(markdown: string): {
       frontmatter: parsed as SkillFrontmatter,
       content,
       rawYaml,
+      hadInvalidFrontmatterBlock: false,
     };
   } catch {
     return {
       frontmatter: null,
       content,
       rawYaml,
+      hadInvalidFrontmatterBlock: true,
     };
   }
 }

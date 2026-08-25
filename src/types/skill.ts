@@ -36,6 +36,16 @@ export interface SelectiveImportResult {
   importedSkills: string[];
   failedSkills: Array<{ name: string; error: string }>;
   targetPath: string;
+  /**
+   * Skills that imported successfully but needed a caveat: currently, a
+   * markdown_file skill whose SKILL.md had a `---`-delimited frontmatter
+   * block that failed to parse as YAML. The import still succeeds (a
+   * fresh, valid frontmatter block is generated from the already-known
+   * name/description, and the body content is preserved), but any other
+   * fields the original frontmatter had (version, tags, custom fields...)
+   * are lost in the process - distinct from a plain success.
+   */
+  warnings: Array<{ name: string; message: string }>;
 }
 
 export interface SkillLinkResult {

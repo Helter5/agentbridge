@@ -201,6 +201,9 @@ program
       for (const imported of importResult.importedSkills) {
         p.log.success(`Imported: ${pc.bold(imported)} ${icons.arrow} ${contractHome(targetDir)}`);
       }
+      for (const warning of importResult.warnings) {
+        p.log.warn(`${pc.bold(warning.name)}: ${warning.message}`);
+      }
       for (const failed of importResult.failedSkills) {
         anyFailure = true;
         p.log.error(`Failed ${failed.name}: ${failed.error}`);

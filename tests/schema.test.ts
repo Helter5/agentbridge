@@ -26,19 +26,41 @@ tags:
 
 Follow these steps...`;
 
-    const { frontmatter, content } = parseFrontmatter(md);
+    const { frontmatter, content, hadInvalidFrontmatterBlock } = parseFrontmatter(md);
     expect(frontmatter).not.toBeNull();
     expect(frontmatter?.name).toBe('web-search');
     expect(frontmatter?.description).toBe('Search the web using Perplexity API');
     expect(frontmatter?.tags).toEqual(['search', 'api']);
     expect(content.trim()).toContain('# Web Search Instructions');
+    expect(hadInvalidFrontmatterBlock).toBe(false);
   });
 
   it('handles markdown without frontmatter gracefully', () => {
     const md = `# Just Plain Markdown\n\nNo frontmatter here.`;
-    const { frontmatter, content } = parseFrontmatter(md);
+    const { frontmatter, content, hadInvalidFrontmatterBlock } = parseFrontmatter(md);
     expect(frontmatter).toBeNull();
     expect(content).toBe(md);
+    // No `---` delimiters were even present - this is a normal plain note,
+    // not a parse failure, so it must NOT be flagged the same way a
+    // genuinely malformed block is (see the next test).
+    expect(hadInvalidFrontmatterBlock).toBe(false);
+  });
+
+  it('flags hadInvalidFrontmatterBlock when a "---"-delimited block is present but its YAML fails to parse', () => {
+    // Distinct from "no frontmatter at all" above: this file DID try to
+    // provide frontmatter, but it's broken - callers that regenerate a
+    // fresh header on `!frontmatter` (see selectivelyImportSkills() in
+    // skill-linker.ts) need this flag to warn instead of failing silently.
+    const md = `---
+name: broken-skill
+description: [this is not, valid: yaml: at: all
+---
+Body content that must be preserved.`;
+
+    const { frontmatter, content, hadInvalidFrontmatterBlock } = parseFrontmatter(md);
+    expect(frontmatter).toBeNull();
+    expect(content).toContain('Body content that must be preserved.');
+    expect(hadInvalidFrontmatterBlock).toBe(true);
   });
 
   it('serializes frontmatter and content to markdown', () => {
