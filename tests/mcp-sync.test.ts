@@ -134,4 +134,70 @@ describe('MCP Synchronizer Engine', () => {
     expect(updatedClaude?.claudeTheme).toBe('dark');
     expect(Object.keys(updatedClaude?.mcpServers || {}).sort()).toEqual(['github', 'memory']);
   });
+
+  it('never persists a resolved secret value to disk - writes back the ${VAR} placeholder', async () => {
+    const REAL_TOKEN = 'sk-real-secret-1234567890abcdef1234567890';
+    const envVarName = 'AGENTSYNC_TEST_SECRET';
+    const originalEnvValue = process.env[envVarName];
+    process.env[envVarName] = REAL_TOKEN;
+
+    try {
+      const claudeConfigFile = path.join(tempDir, 'claude-secret.json');
+      // Simulates a source config where the env value has already been
+      // resolved to the literal secret (e.g. typed directly by a user).
+      await safeWriteJson(claudeConfigFile, {
+        mcpServers: {
+          secretServer: {
+            command: 'npx',
+            args: ['-y', '@modelcontextprotocol/server-secret'],
+            env: { [envVarName]: REAL_TOKEN },
+          },
+        },
+      });
+
+      const mockAgents: DetectedAgent[] = [
+        {
+          id: 'claude',
+          name: 'Claude Code',
+          displayName: 'Claude Code',
+          isInstalled: true,
+          paths: {
+            configDir: tempDir,
+            skillsDir: path.join(tempDir, 'skills-secret'),
+            mcpConfigFile: claudeConfigFile,
+          },
+          existingSkillsCount: 0,
+          existingMcpServersCount: 1,
+          isLinkedToHub: false,
+        },
+      ];
+
+      const isolatedHubMcp = path.join(tempDir, 'isolated-secret-hub.json');
+      const exportPath = path.join(tempDir, 'exported-secret.json');
+
+      await syncMcpConfigs(mockAgents, {
+        masterHubPath: isolatedHubMcp,
+        outputPath: exportPath,
+      });
+
+      // Every location the sync writes to must carry the placeholder, never
+      // the raw resolved token.
+      for (const filePath of [claudeConfigFile, isolatedHubMcp, exportPath]) {
+        const raw = await fsp.readFile(filePath, 'utf-8');
+        expect(raw).not.toContain(REAL_TOKEN);
+        expect(raw).toContain(`\${${envVarName}}`);
+      }
+
+      const updatedClaude = await safeReadJson<MCPConfigFile>(claudeConfigFile);
+      expect(updatedClaude?.mcpServers?.secretServer.env?.[envVarName]).toBe(
+        `\${${envVarName}}`
+      );
+    } finally {
+      if (originalEnvValue === undefined) {
+        delete process.env[envVarName];
+      } else {
+        process.env[envVarName] = originalEnvValue;
+      }
+    }
+  });
 });

@@ -288,3 +288,42 @@ export function interpolateEnvString(str: string): string {
     return process.env[varName] !== undefined ? process.env[varName]! : `\${${varName}}`;
   });
 }
+
+/**
+ * Checks whether a string is already an env-var placeholder (${VAR} or $VAR)
+ */
+function isEnvPlaceholder(value: string): boolean {
+  return /^\$\{[a-zA-Z0-9_]+\}$|^\$[a-zA-Z0-9_]+$/.test(value);
+}
+
+/**
+ * Inverse of interpolateEnvString: replaces a resolved value back with its
+ * ${VAR} placeholder when it exactly matches the current process.env value
+ * for the given var name. Used before persisting MCP env config to disk so
+ * resolved secrets never hit the filesystem in plaintext - only the
+ * placeholder is written, and the real value resolves again at runtime.
+ * Values that don't match a known env var (or are already a placeholder)
+ * are returned unchanged.
+ */
+export function redactEnvValue(varName: string, value: string): string {
+  if (!value || typeof value !== 'string') return value;
+  if (isEnvPlaceholder(value)) return value;
+  if (process.env[varName] !== undefined && process.env[varName] === value) {
+    return `\${${varName}}`;
+  }
+  return value;
+}
+
+/**
+ * Applies redactEnvValue() to every entry of an env record.
+ */
+export function redactEnvRecord(
+  env: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!env) return env;
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    result[key] = redactEnvValue(key, value);
+  }
+  return result;
+}

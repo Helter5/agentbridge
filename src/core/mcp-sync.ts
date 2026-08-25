@@ -7,7 +7,7 @@ import {
   backupPath,
   ensureDir,
 } from '../utils/fs.js';
-import { validateMCPConfigFile, validateMCPServerConfig } from '../utils/schema.js';
+import { validateMCPConfigFile, validateMCPServerConfig, redactEnvRecord } from '../utils/schema.js';
 import { DEFAULT_MASTER_MCP_PATH } from '../constants.js';
 import type { DetectedAgent } from '../types/client.js';
 import type {
@@ -63,6 +63,21 @@ export function mergeServerConfig(
 
 export interface CollectMcpOptions {
   masterHubPath?: string;
+}
+
+/**
+ * Returns a copy of a server-config map with every env value that matches
+ * its own env var replaced back with the ${VAR} placeholder, so resolved
+ * secrets never get persisted to disk (see redactEnvRecord in utils/schema).
+ */
+function redactServerConfigsEnv(
+  servers: Record<string, MCPServerConfig>
+): Record<string, MCPServerConfig> {
+  const redacted: Record<string, MCPServerConfig> = {};
+  for (const [name, config] of Object.entries(servers)) {
+    redacted[name] = config.env ? { ...config, env: redactEnvRecord(config.env) } : config;
+  }
+  return redacted;
 }
 
 /**
@@ -203,7 +218,7 @@ export async function syncMcpConfigs(
             await backupPath(filePath);
           }
           await ensureDir(path.dirname(filePath));
-          existingConfig.mcpServers = newServers;
+          existingConfig.mcpServers = redactServerConfigsEnv(newServers);
           await safeWriteJson(filePath, existingConfig);
         }
 
@@ -227,7 +242,7 @@ export async function syncMcpConfigs(
           $schema: 'https://json.schemastore.org/mcp-server-config.json',
           version: '1.0.0',
           lastSynchronized: new Date().toISOString(),
-          mcpServers: mergedServers,
+          mcpServers: redactServerConfigsEnv(mergedServers),
         });
       } catch (err) {
         // Master write error in transactional block
@@ -239,7 +254,7 @@ export async function syncMcpConfigs(
     if (options.outputPath && !options.dryRun) {
       const exportPath = path.resolve(expandHome(options.outputPath));
       await ensureDir(path.dirname(exportPath));
-      await safeWriteJson(exportPath, { mcpServers: mergedServers });
+      await safeWriteJson(exportPath, { mcpServers: redactServerConfigsEnv(mergedServers) });
     }
   };
 
