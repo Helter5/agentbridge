@@ -2,6 +2,22 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import { DEFAULT_LOCK_PATH } from '../constants.js';
+
+/**
+ * Resolves the single shared lockfile every agentsync writer (CLI
+ * commands, watcher, rollback snapshots) contends on. Honors
+ * AGENTSYNC_LOCK_PATH so tests can point it at an isolated tmpdir instead
+ * of the real ~/.agentsync/.lock, without any FS-level mocking.
+ *
+ * Deliberately NOT memoized into a module-level constant: callers that
+ * did that (frozen at first import) could never pick up a test's env
+ * override, and would also freeze os.homedir() for the process lifetime.
+ * Call this at the point of use instead.
+ */
+export function resolveSharedLockPath(): string {
+  return path.resolve(expandHome(process.env.AGENTSYNC_LOCK_PATH || DEFAULT_LOCK_PATH));
+}
 
 /**
  * Expands leading ~ in path to user home directory

@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
-import { acquireLock, withLock, ensureDir, isProcessAlive } from '../src/utils/fs.js';
+import { acquireLock, withLock, ensureDir, isProcessAlive, resolveSharedLockPath } from '../src/utils/fs.js';
+import { DEFAULT_LOCK_PATH } from '../src/constants.js';
 
 describe('Lockfile and Concurrency Engine', () => {
   const tempDir = path.join(os.tmpdir(), `agentsync-lock-test-${Date.now()}`);
@@ -217,5 +218,22 @@ describe('Lockfile and Concurrency Engine', () => {
     });
 
     expect(result).toBe('ran');
+  });
+
+  it('resolveSharedLockPath() honors AGENTSYNC_LOCK_PATH, falling back to the real default when unset', () => {
+    const original = process.env.AGENTSYNC_LOCK_PATH;
+    try {
+      delete process.env.AGENTSYNC_LOCK_PATH;
+      const defaultResolved = resolveSharedLockPath();
+      expect(defaultResolved).not.toBe(DEFAULT_LOCK_PATH); // expanded/resolved, not the raw "~/..." string
+      expect(defaultResolved.endsWith('.lock')).toBe(true);
+
+      const override = path.join(tempDir, 'override.lock');
+      process.env.AGENTSYNC_LOCK_PATH = override;
+      expect(resolveSharedLockPath()).toBe(path.resolve(override));
+    } finally {
+      if (original === undefined) delete process.env.AGENTSYNC_LOCK_PATH;
+      else process.env.AGENTSYNC_LOCK_PATH = original;
+    }
   });
 });

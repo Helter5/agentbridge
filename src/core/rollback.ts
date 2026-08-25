@@ -8,10 +8,9 @@ import {
   safeWriteJson,
   chmodBestEffort,
   withLock,
+  resolveSharedLockPath,
 } from '../utils/fs.js';
-import { DEFAULT_LOCK_PATH, LOCK_RETRY_MAX_WAIT_MS } from '../constants.js';
-
-const lockFilePath = path.resolve(expandHome(DEFAULT_LOCK_PATH));
+import { LOCK_RETRY_MAX_WAIT_MS } from '../constants.js';
 
 export interface BackupSnapshot {
   id: string;
@@ -61,7 +60,7 @@ export async function createBackupSnapshot(
 
   const snapshotFile = path.join(backupsDir, `${id}.json`);
   const wrote = await withLock(
-    lockFilePath,
+    resolveSharedLockPath(),
     async () => {
       await safeWriteJson(snapshotFile, snapshot);
     },
@@ -172,7 +171,7 @@ export async function pruneBackupSnapshots(maxSnapshots = 20): Promise<number> {
   // List + delete run under the same lockfile that guards snapshot creation,
   // so a concurrent createBackupSnapshot() / watch cycle can't race the
   // read-then-unlink sequence below.
-  const result = await withLock(lockFilePath, async () => {
+  const result = await withLock(resolveSharedLockPath(), async () => {
     const snapshots = await listBackupSnapshots();
 
     if (snapshots.length <= maxSnapshots) {
