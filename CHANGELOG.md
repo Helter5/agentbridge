@@ -5,6 +5,84 @@ All notable changes to `agentbridge` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-08-25
+
+First release backed by a full manual end-to-end test pass (every CLI
+command, every documented flag, and a set of realistic broken-input
+scenarios a unit-test suite or a static security audit doesn't reach:
+corrupt config files, concurrent-process lock contention, mid-write
+interruption, malformed frontmatter). All 0.2.0 security-audit findings
+(including the critical path-traversal fix) were already fixed before
+this release - what's new here is a separate class of bug: **correctness
+under a broken or contended input silently degrading to a false "success"
+report instead of an honest failure**, found independently five times
+across five different layers of the codebase in this pass.
+
+### Fixed
+- **`agentbridge watch`**: the debounced AGENTS.md resync discarded
+  `syncProjectRules()`'s per-target result and unconditionally reported
+  "✔ Auto-synchronized" - including when every target actually failed
+  (e.g. another agentbridge command holding the shared lock). Live-
+  reproduced: 3 of 4 rule targets silently kept stale content behind a
+  green checkmark, in a long-running background command where a user has
+  no reason to notice. Now reports a distinct partial-failure warning
+  naming exactly which targets failed, and a separate error path exists
+  for a genuine throw (previously completely unguarded and capable of
+  silently killing the whole watch process).
+- **`agentbridge sync-mcp`**: an agent's MCP config file with invalid
+  JSON was silently treated as empty and overwritten with only the newly
+  synced servers, reported as a plain success - the original content
+  (backed up, but with no indication anything unusual happened) was
+  discarded without a trace in the terminal output.
+- **`agentbridge pick`/`import`**: a skill whose `SKILL.md` frontmatter
+  block existed but failed to parse as YAML had it silently regenerated
+  from scratch (losing any field beyond name/description), reported as
+  a plain successful import.
+- **`agentbridge rollback`**: restoring a nonexistent or corrupt snapshot
+  ID already computed the specific reason correctly at the core-function
+  level, but the CLI's failure branch only inspected an (empty, in this
+  case) per-file list and never printed it - just a generic "failed or
+  was incomplete." A CLI-level integration test now guards this boundary
+  specifically, since a unit test on the core function alone can't catch
+  a bug that lives in how the CLI aggregates its result.
+- **`agentbridge pick`/`import`**: a `directory`-type skill whose
+  sanitized name collided with an already-imported one was silently
+  absorbed with no files touched, reported as "Imported" (the
+  `markdown_file` branch already had this collision check from 0.2.0;
+  the more common `directory` branch did not).
+- **`agentbridge sync-rules --mode symlink`**: on Windows without
+  Developer Mode/an elevated shell, a file-symlink attempt transparently
+  falls back to a hardlink - but was reported identically to a genuine
+  symlink ("Symlinked to source"), hiding a real staleness risk (a
+  hardlink doesn't follow AGENTS.md being replaced via delete+rewrite,
+  only edited in place). Now reported distinctly with the staleness
+  caveat.
+- **`agentbridge link-skills`**: two agents having a same-named skill
+  folder with genuinely different content had the losing agent's version
+  silently discarded during the hub merge, reported as a plain
+  "Imported" for both. Identical content across agents (the common case)
+  still merges silently, as intended - only a real content mismatch is
+  now flagged.
+- **`agentbridge link-skills --dry-run`** left a stray empty hub
+  directory behind despite promising not to write to disk.
+- **`agentbridge sync-rules --cwd <path>`** silently created an entire
+  new project directory tree (a fresh `AGENTS.md` plus every target
+  file) when pointed at a path that didn't exist, instead of erroring -
+  a typo'd `--cwd` would leave the real project's rules untouched with
+  no warning that anything was wrong.
+- `agentbridge link-skills` no longer crashes when an agent's skills
+  directory is a broken (orphaned-target) junction/symlink - treated the
+  same as "nothing to merge" instead.
+- Backup snapshots created by the test suite are isolated from
+  `~/.agentbridge/backups` via `AGENTBRIDGE_BACKUPS_DIR`, instead of
+  leaving real snapshot files in a developer's actual home directory on
+  every `npm test` run.
+- README accuracy pass: architecture diagram and the `sync-rules`
+  description now match actual behavior.
+
+### Changed
+- Version bump only; no dependency or build-tooling changes.
+
 ## [0.2.0] - 2026-08-25
 
 ### Security
