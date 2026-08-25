@@ -84,6 +84,54 @@ describe('CLI Integration Tests', () => {
     }
   });
 
+  it('unlink reports "Successfully unlinked." (no "and restored") when --no-restore is passed, and the full phrase by default', async () => {
+    // Found via manual testing: this line was hardcoded to always say
+    // "and restored" regardless of --no-restore - with --no-restore the
+    // standalone folder is genuinely left empty (nothing copied back), so
+    // the message claimed something that didn't happen. success itself was
+    // always accurate (the unlink genuinely succeeded); only the wording
+    // was wrong - a different, shallower bug than the PR #11-16 family
+    // (those had success:true over an actual failure; this has an
+    // accurate success with an inaccurate verb).
+    const fakeHome = path.join(os.tmpdir(), `agentbridge-cli-unlink-test-${Date.now()}`);
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+      APPDATA: path.join(fakeHome, 'AppData', 'Roaming'),
+    };
+
+    try {
+      fs.mkdirSync(path.join(fakeHome, '.claude', 'skills', 'demo-skill'), { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeHome, '.claude', 'skills', 'demo-skill', 'SKILL.md'),
+        '---\nname: demo-skill\ndescription: demo\n---\n\nBody\n',
+        'utf-8'
+      );
+
+      // Default: link, then unlink with no flags - restore did happen.
+      await execFileAsync('node', [cliPath, 'link-skills', '--yes'], { env });
+      const { stdout: defaultOut } = await execFileAsync('node', [cliPath, 'unlink', '--yes'], { env });
+      expect(defaultOut).toContain('Successfully unlinked and restored.');
+
+      // --no-restore: link again, then unlink with --no-restore - the
+      // folder is left empty, so the message must not claim a restore.
+      await execFileAsync('node', [cliPath, 'link-skills', '--yes'], { env });
+      const { stdout: noRestoreOut } = await execFileAsync(
+        'node',
+        [cliPath, 'unlink', '--yes', '--no-restore'],
+        { env }
+      );
+      expect(noRestoreOut).toContain('Successfully unlinked.');
+      expect(noRestoreOut).not.toContain('Successfully unlinked and restored.');
+
+      const restoredContents = fs.readdirSync(path.join(fakeHome, '.claude', 'skills'));
+      expect(restoredContents).toEqual([]);
+    } finally {
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
   it('sync-rules with a nonexistent --cwd errors instead of silently creating a whole new project directory tree', async () => {
     // Found via manual testing: --cwd pointing at a path that doesn't exist
     // didn't error at all - it silently created the entire directory

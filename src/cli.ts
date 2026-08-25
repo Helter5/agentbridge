@@ -702,9 +702,14 @@ program
 
     s.stop('Unlink completed!');
 
+    const restored = options.restore !== false;
     for (const r of results) {
       if (r.success) {
-        p.log.success(`${pc.bold(r.agentName)}: Successfully unlinked and restored.`);
+        p.log.success(
+          restored
+            ? `${pc.bold(r.agentName)}: Successfully unlinked and restored.`
+            : `${pc.bold(r.agentName)}: Successfully unlinked.`
+        );
       } else {
         p.log.error(`${pc.bold(r.agentName)}: Failed (${r.error})`);
       }
