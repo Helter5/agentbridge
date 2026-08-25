@@ -188,4 +188,112 @@ describe('Skill Linking Engine', () => {
     expect(result.importedSkills).toEqual(['normal-skill']);
     expect(await pathExists(path.join(importTarget, 'normal-skill', 'SKILL.md'))).toBe(true);
   });
+
+  it('selectivelyImportSkills() skips a markdown_file skill whose sanitized name collides with an already-imported one, without overwrite', async () => {
+    // "My Skill!!!" and "my-skill" both sanitize to the same destDir - a
+    // realistic collision (same skill present in two agents' directories,
+    // or a crafted name deliberately chosen to collide).
+    const sourceA = path.join(tempDir, 'source-a.md');
+    await fsp.writeFile(
+      sourceA,
+      `---\nname: my-skill\ndescription: original skill A\n---\n\nORIGINAL_A_CONTENT_MARKER\n`,
+      'utf-8'
+    );
+    const sourceB = path.join(tempDir, 'source-b.md');
+    await fsp.writeFile(
+      sourceB,
+      `---\nname: my-skill\ndescription: colliding skill B\n---\n\nDIFFERENT_B_CONTENT_MARKER\n`,
+      'utf-8'
+    );
+
+    const importTarget = path.join(tempDir, 'import-target-collision');
+    await ensureDir(importTarget);
+
+    const skillA: DiscoveredSkill = {
+      id: 'agent-a:my-skill',
+      name: 'My Skill!!!',
+      agentId: 'agent-a',
+      agentName: 'Agent A',
+      description: 'original skill A',
+      sourcePath: sourceA,
+      type: 'markdown_file',
+    };
+    const skillB: DiscoveredSkill = {
+      id: 'agent-b:my-skill',
+      name: 'my-skill',
+      agentId: 'agent-b',
+      agentName: 'Agent B',
+      description: 'colliding skill B',
+      sourcePath: sourceB,
+      type: 'markdown_file',
+    };
+
+    const firstResult = await selectivelyImportSkills([skillA], importTarget);
+    expect(firstResult.failedSkills).toEqual([]);
+    expect(firstResult.importedSkills).toEqual(['My Skill!!!']);
+
+    const skillFilePath = path.join(importTarget, 'my-skill', 'SKILL.md');
+    const contentAfterFirstImport = await fsp.readFile(skillFilePath, 'utf-8');
+    expect(contentAfterFirstImport).toContain('ORIGINAL_A_CONTENT_MARKER');
+
+    // Import the colliding skill without overwrite - must be skipped, not
+    // silently clobber A's content.
+    const secondResult = await selectivelyImportSkills([skillB], importTarget);
+    expect(secondResult.importedSkills).toEqual([]);
+    expect(secondResult.failedSkills).toHaveLength(1);
+    expect(secondResult.failedSkills[0].name).toBe('my-skill');
+    expect(secondResult.failedSkills[0].error).toContain('already exists');
+
+    const contentAfterSkippedImport = await fsp.readFile(skillFilePath, 'utf-8');
+    expect(contentAfterSkippedImport).toBe(contentAfterFirstImport);
+    expect(contentAfterSkippedImport).not.toContain('DIFFERENT_B_CONTENT_MARKER');
+  });
+
+  it('selectivelyImportSkills() overwrites a colliding markdown_file skill when options.overwrite is true', async () => {
+    const sourceA = path.join(tempDir, 'source-a.md');
+    await fsp.writeFile(
+      sourceA,
+      `---\nname: my-skill\ndescription: original skill A\n---\n\nORIGINAL_A_CONTENT_MARKER\n`,
+      'utf-8'
+    );
+    const sourceB = path.join(tempDir, 'source-b.md');
+    await fsp.writeFile(
+      sourceB,
+      `---\nname: my-skill\ndescription: colliding skill B\n---\n\nDIFFERENT_B_CONTENT_MARKER\n`,
+      'utf-8'
+    );
+
+    const importTarget = path.join(tempDir, 'import-target-overwrite');
+    await ensureDir(importTarget);
+
+    const skillA: DiscoveredSkill = {
+      id: 'agent-a:my-skill',
+      name: 'my-skill',
+      agentId: 'agent-a',
+      agentName: 'Agent A',
+      description: 'original skill A',
+      sourcePath: sourceA,
+      type: 'markdown_file',
+    };
+    const skillB: DiscoveredSkill = {
+      id: 'agent-b:my-skill',
+      name: 'my-skill',
+      agentId: 'agent-b',
+      agentName: 'Agent B',
+      description: 'colliding skill B',
+      sourcePath: sourceB,
+      type: 'markdown_file',
+    };
+
+    await selectivelyImportSkills([skillA], importTarget);
+
+    const secondResult = await selectivelyImportSkills([skillB], importTarget, { overwrite: true });
+    expect(secondResult.failedSkills).toEqual([]);
+    expect(secondResult.importedSkills).toEqual(['my-skill']);
+
+    const skillFilePath = path.join(importTarget, 'my-skill', 'SKILL.md');
+    const finalContent = await fsp.readFile(skillFilePath, 'utf-8');
+    expect(finalContent).toContain('DIFFERENT_B_CONTENT_MARKER');
+    expect(finalContent).not.toContain('ORIGINAL_A_CONTENT_MARKER');
+  });
 });
