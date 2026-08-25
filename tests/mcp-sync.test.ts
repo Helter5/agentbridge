@@ -12,7 +12,7 @@ import type { DetectedAgent } from '../src/types/client.js';
 import type { MCPConfigFile } from '../src/types/mcp.js';
 
 describe('MCP Synchronizer Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-mcp-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-mcp-test-${Date.now()}`);
 
   beforeEach(async () => {
     await ensureDir(tempDir);
@@ -137,7 +137,7 @@ describe('MCP Synchronizer Engine', () => {
 
   it('never persists a resolved secret value to disk - writes back the ${VAR} placeholder', async () => {
     const REAL_TOKEN = 'sk-real-secret-1234567890abcdef1234567890';
-    const envVarName = 'AGENTSYNC_TEST_SECRET';
+    const envVarName = 'AGENTBRIDGE_TEST_SECRET';
     const originalEnvValue = process.env[envVarName];
     process.env[envVarName] = REAL_TOKEN;
 

@@ -84,7 +84,7 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
 
   // 3. Symlink / Junction Capability Check
   try {
-    const tmpDir = path.join(os.tmpdir(), `agentsync-check-${Date.now()}`);
+    const tmpDir = path.join(os.tmpdir(), `agentbridge-check-${Date.now()}`);
     const tmpTarget = path.join(tmpDir, 'target');
     const tmpLink = path.join(tmpDir, 'link');
 
@@ -209,7 +209,7 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
       id: 'hub-skills-count',
       category: 'skills',
       title: 'Skills in Central Hub',
-      description: `Hub is currently empty (${hubPath}). Use 'agentsync add-skill <name>' to create one.`,
+      description: `Hub is currently empty (${hubPath}). Use 'agentbridge add-skill <name>' to create one.`,
       status: 'info',
       fixable: false,
     });

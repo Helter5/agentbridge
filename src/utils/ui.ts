@@ -1,17 +1,10 @@
 import pc from 'picocolors';
 
 /**
- * Renders the AgentSync banner
+ * Renders the AgentBridge banner
  */
 export function printBanner(): void {
-  const logo = `
-   ___                    __  _____                  
-  / _ | ___ ____ ___  ___/ /_/ __/_ _____  ____ ___ 
- / __ |/ _ \`/ -_) _ \\/ __/ __/\\ \\/ // / _ \\/ __/ -_)
-/_/ |_|\\_, /\\__/_//_/\\__/\\__/___/\\_, /_//_/\\__/\\__/ 
-      /___/                     /___/               `;
-
-  console.log(pc.cyan(logo));
+  console.log(pc.bold(pc.cyan('  AgentBridge')));
   console.log(
     pc.dim('  Universal Skill & MCP Sync Engine for AI Coding Agents') + '\n'
   );

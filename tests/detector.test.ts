@@ -6,7 +6,7 @@ import { detectInstalledAgents, SUPPORTED_AGENTS } from '../src/core/detector.js
 import { safeWriteJson, ensureDir } from '../src/utils/fs.js';
 
 describe('Client Detector Engine', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-detector-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-detector-test-${Date.now()}`);
   const tempHub = path.join(tempDir, 'hub');
 
   beforeEach(async () => {

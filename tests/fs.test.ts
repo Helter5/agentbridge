@@ -19,7 +19,7 @@ import {
 } from '../src/utils/fs.js';
 
 describe('Filesystem Utilities', () => {
-  const tempDir = path.join(os.tmpdir(), `agentsync-fs-test-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `agentbridge-fs-test-${Date.now()}`);
 
   beforeEach(async () => {
     await ensureDir(tempDir);
@@ -34,7 +34,7 @@ describe('Filesystem Utilities', () => {
     // A path outside the home directory, built from the OS's own root
     // rather than a hardcoded POSIX ('/usr/local', '/tmp') or Windows
     // literal, so this assertion holds on every platform in CI.
-    const unrelatedPath = path.join(path.parse(home).root, 'agentsync-unrelated-dir');
+    const unrelatedPath = path.join(path.parse(home).root, 'agentbridge-unrelated-dir');
 
     expect(expandHome('~')).toBe(home);
     expect(expandHome('~/foo/bar')).toBe(path.join(home, 'foo', 'bar'));

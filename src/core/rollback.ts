@@ -20,7 +20,7 @@ export interface BackupSnapshot {
 }
 
 export function getBackupsDirectory(): string {
-  return path.resolve(expandHome('~/.agentsync/backups'));
+  return path.resolve(expandHome('~/.agentbridge/backups'));
 }
 
 /**
@@ -73,7 +73,7 @@ export async function createBackupSnapshot(
     // safely on disk would hand executeTransactionalOperation() a
     // rollback safety net that doesn't actually exist on failure.
     throw new Error(
-      `Could not create backup snapshot: another agentsync process is currently modifying configs. Try again in a moment.`
+      `Could not create backup snapshot: another agentbridge process is currently modifying configs. Try again in a moment.`
     );
   }
   return snapshot;

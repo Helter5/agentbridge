@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     // Several core functions now serialize writes through the single
-    // shared ~/.agentsync/.lock lockfile (see withLock() usage in
+    // shared ~/.agentbridge/.lock lockfile (see withLock() usage in
     // rules.ts/skill-linker.ts/rollback.ts). Running test files in
     // parallel workers would make unrelated test files contend for that
     // same real lockfile and silently no-op each other's writes, so test

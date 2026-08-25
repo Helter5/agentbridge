@@ -1,10 +1,10 @@
 {
-  "name": "agentsync",
+  "name": "agentbridge",
   "version": "0.2.0",
   "description": "Universal Skill & MCP Sync Engine for AI Coding Agents (Antigravity, Claude Code, Codex, Cursor)",
   "type": "module",
   "bin": {
-    "agentsync": "./dist/cli.js"
+    "agentbridge": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -37,12 +37,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Helter5/agentsync.git"
+    "url": "https://github.com/Helter5/agentbridge.git"
   },
   "bugs": {
-    "url": "https://github.com/Helter5/agentsync/issues"
+    "url": "https://github.com/Helter5/agentbridge/issues"
   },
-  "homepage": "https://github.com/Helter5/agentsync#readme",
+  "homepage": "https://github.com/Helter5/agentbridge#readme",
   "engines": {
     "node": ">=18.0.0"
   },
