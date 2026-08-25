@@ -37,12 +37,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/agentsync-dev/agentsync.git"
+    "url": "https://github.com/Helter5/agentsync.git"
   },
   "bugs": {
-    "url": "https://github.com/agentsync-dev/agentsync/issues"
+    "url": "https://github.com/Helter5/agentsync/issues"
   },
-  "homepage": "https://github.com/agentsync-dev/agentsync#readme",
+  "homepage": "https://github.com/Helter5/agentsync#readme",
   "engines": {
     "node": ">=18.0.0"
   },
