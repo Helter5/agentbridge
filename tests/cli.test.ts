@@ -83,4 +83,29 @@ describe('CLI Integration Tests', () => {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('sync-rules with a nonexistent --cwd errors instead of silently creating a whole new project directory tree', async () => {
+    // Found via manual testing: --cwd pointing at a path that doesn't exist
+    // didn't error at all - it silently created the entire directory
+    // (mkdir -p) plus a fresh boilerplate AGENTS.md and every target file,
+    // then exited 0. A typo'd --cwd would leave the real project untouched
+    // while a brand-new, unrelated directory tree appeared at the wrong
+    // path with no warning.
+    const base = path.join(os.tmpdir(), `agentbridge-cli-syncrules-test-${Date.now()}`);
+    const nonexistentCwd = path.join(base, 'does-not-exist-anywhere');
+    // base itself doesn't exist either - confirms nothing gets created at
+    // any level of the path, not just the leaf directory.
+    expect(fs.existsSync(base)).toBe(false);
+
+    try {
+      await execFileAsync('node', [cliPath, 'sync-rules', '--cwd', nonexistentCwd, '--yes']);
+      throw new Error('expected sync-rules to exit non-zero for a nonexistent --cwd');
+    } catch (err: any) {
+      expect(err.code).toBe(1);
+      const output = (err.stdout || '') + (err.stderr || '');
+      expect(output).toContain('Directory does not exist');
+      expect(output).toContain(nonexistentCwd);
+      expect(fs.existsSync(base)).toBe(false);
+    }
+  });
 });

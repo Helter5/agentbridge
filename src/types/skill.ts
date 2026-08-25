@@ -61,6 +61,13 @@ export interface SkillLinkResult {
 export interface SkillSyncSummary {
   hubPath: string;
   importedSkills: string[];
+  /**
+   * Two different agents had a skill folder with the same name but
+   * different SKILL.md content - the merge kept whichever agent's copy got
+   * there first and discarded the other, per file. See MergeSkillsResult
+   * in skill-linker.ts for the full reasoning.
+   */
+  collisions: Array<{ skillName: string; keptFrom: string; discardedFrom: string }>;
   linkedAgents: SkillLinkResult[];
   totalSkillsInHub: number;
 }

@@ -15,7 +15,7 @@ import {
 import { syncMcpConfigs, collectMcpServers } from './core/mcp-sync.js';
 import { syncProjectRules, inspectProjectRules } from './core/rules.js';
 import { runDiagnostics, fixDiagnostics } from './core/doctor.js';
-import { contractHome } from './utils/fs.js';
+import { contractHome, pathExists } from './utils/fs.js';
 
 // Read the version from package.json at runtime rather than hardcoding a
 // literal here - a hardcoded string silently drifts out of sync with the
@@ -320,6 +320,12 @@ program
       );
     }
 
+    for (const collision of summary.collisions) {
+      p.log.warn(
+        `${pc.bold(collision.skillName)}: ${collision.discardedFrom}'s version differs from ${collision.keptFrom}'s and was NOT merged in - only ${collision.keptFrom}'s content is in the hub. Resolve manually if both versions matter.`
+      );
+    }
+
     for (const link of summary.linkedAgents) {
       if (link.success) {
         p.log.success(
@@ -447,6 +453,17 @@ program
     p.intro(pc.bgCyan(pc.black(' agentbridge sync-rules ')));
 
     const projectRoot = path.resolve(options.cwd);
+    if (!(await pathExists(projectRoot))) {
+      // Without this check, a typo'd --cwd silently created an entire new
+      // project directory tree (AGENTS.md + every target file) at the
+      // wrong path instead of erroring - easy to miss since the command
+      // still exits 0, and confusing when the real project never got its
+      // rules file.
+      p.log.error(`Directory does not exist: ${projectRoot}`);
+      p.outro(pc.red('✖ Cannot synchronize rules for a nonexistent directory.'));
+      process.exitCode = 1;
+      return;
+    }
     const { sourceFile, targets } = await inspectProjectRules(projectRoot);
 
     p.log.info(`Project root: ${pc.cyan(projectRoot)}`);
