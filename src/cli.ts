@@ -413,7 +413,7 @@ program
  */
 program
   .command('sync-rules')
-  .description('Synchronize AGENTS.md to CLAUDE.md, GEMINI.md, and .cursorrules in current project')
+  .description('Synchronize AGENTS.md to CLAUDE.md, GEMINI.md, .cursorrules, and .github/copilot-instructions.md in current project')
   .option('-c, --cwd <dir>', 'Project root directory', process.cwd())
   .option('-m, --mode <mode>', 'Sync mode: symlink or copy', 'copy')
   .option('-y, --yes', 'Automatically confirm all prompts')
