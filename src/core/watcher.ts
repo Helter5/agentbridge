@@ -74,40 +74,55 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
 
   // 1. Watch Hub Skills Directory with Debounce
   if (await pathExists(hubSkillsPath)) {
-    try {
-      const skillsWatcher = fs.watch(
-        hubSkillsPath,
-        { recursive: true },
-        (eventType, filename) => {
-          // Ignore dot-prefixed entries at the hub root - same reserved
-          // treatment mergeSkillsIntoHub() already gives them (never real
-          // skills). Found via a long real-machine watch session: doctor's
-          // own hub-write-access check creates and deletes a `.test-write`
-          // file inside the hub on every run, and with no filter here that
-          // showed up as a "Skill change detected" log line each time -
-          // confusing noise with nothing to do with an actual skill.
-          const topLevelEntry = filename ? filename.split(/[\\/]/)[0] : null;
-          if (topLevelEntry && topLevelEntry.startsWith('.')) {
-            return;
+    const onHubEvent = (eventType: string, filename: string | null) => {
+      // Ignore dot-prefixed entries at the hub root - same reserved
+      // treatment mergeSkillsIntoHub() already gives them (never real
+      // skills). Found via a long real-machine watch session: doctor's
+      // own hub-write-access check creates and deletes a `.test-write`
+      // file inside the hub on every run, and with no filter here that
+      // showed up as a "Skill change detected" log line each time -
+      // confusing noise with nothing to do with an actual skill.
+      const topLevelEntry = filename ? filename.split(/[\\/]/)[0] : null;
+      if (topLevelEntry && topLevelEntry.startsWith('.')) {
+        return;
+      }
+      if (skillDebounceTimer) clearTimeout(skillDebounceTimer);
+      skillDebounceTimer = setTimeout(async () => {
+        await withLock(lockFilePath, async () => {
+          // onSkillChange only surfaces a log message (it doesn't
+          // itself resync anything), so a burst of changes across
+          // several skill files coalescing into one callback with
+          // just the last filename loses nothing but that log line's
+          // precision - no file content is derived from `filename`.
+          if (options.onSkillChange) {
+            options.onSkillChange(eventType, filename);
           }
-          if (skillDebounceTimer) clearTimeout(skillDebounceTimer);
-          skillDebounceTimer = setTimeout(async () => {
-            await withLock(lockFilePath, async () => {
-              // onSkillChange only surfaces a log message (it doesn't
-              // itself resync anything), so a burst of changes across
-              // several skill files coalescing into one callback with
-              // just the last filename loses nothing but that log line's
-              // precision - no file content is derived from `filename`.
-              if (options.onSkillChange) {
-                options.onSkillChange(eventType, filename);
-              }
-            });
-          }, debounceDelay);
-        }
-      );
-      watchers.push(skillsWatcher);
+        });
+      }, debounceDelay);
+    };
+
+    try {
+      watchers.push(fs.watch(hubSkillsPath, { recursive: true }, onHubEvent));
     } catch {
-      // Recursive watch fallback
+      // `recursive: true` throws ERR_FEATURE_UNAVAILABLE_ON_PLATFORM on
+      // Linux with Node < 20.13 (no native recursive inotify, and no
+      // non-native shim yet either - that landed in Node 20.13/21.x). The
+      // old code caught this and did nothing at all, silently disabling
+      // hub-skills watching outright on that combination (confirmed via a
+      // deterministic - not flaky - CI failure on ubuntu-latest Node 18.x
+      // specifically, passing on Node 20.x/22.x Linux in the same run).
+      //
+      // Fall back to a non-recursive watch on the hub root: still catches
+      // a skill directory being added or removed (fs.watch reports the
+      // immediate child's name for that even without recursion), just not
+      // an edit to a file *inside* an existing skill directory. Narrower
+      // than full recursion, but real coverage instead of none.
+      try {
+        watchers.push(fs.watch(hubSkillsPath, onHubEvent));
+      } catch {
+        // Watching the hub root isn't available at all - give up on
+        // hub-skills watching for this session, same as before.
+      }
     }
   }
 
