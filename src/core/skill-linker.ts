@@ -264,6 +264,23 @@ export async function mergeSkillsIntoHub(
     }
     for (const entry of entries) {
       if (entry.isDirectory()) {
+        // Skip dot-prefixed and other reserved directories - same names
+        // discoverAllAvailableSkills() (the pick path) already excludes.
+        // Found via real-machine testing: OpenAI Codex ships its own
+        // built-in skills under a `.system` folder (protected by its own
+        // `.codex-system-skills.marker` file, signaling "Codex manages
+        // this, don't touch it"). Unlike pick, link-skills has no
+        // per-skill selection step and no concept of recursing into a
+        // dot-prefixed container to import its children individually
+        // either - it would copy the whole thing verbatim into the
+        // shared hub and cross-link it into every other agent. Once
+        // ~/.codex/skills becomes a junction into that hub, a future
+        // Codex self-update touching its own .system folder would be
+        // writing into the hub Claude/Antigravity share too.
+        if (entry.name.startsWith('.') || entry.name === 'node_modules') {
+          continue;
+        }
+
         const srcSkillDir = path.join(skillsDir, entry.name);
         const destSkillDir = path.join(absHub, entry.name);
 

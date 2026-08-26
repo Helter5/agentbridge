@@ -137,6 +137,77 @@ describe('Skill Linking Engine', () => {
     expect(hubSkills.some((s) => s.dirName === 'legacy-skill')).toBe(true);
   });
 
+  it('mergeSkillsIntoHub() never imports a dot-prefixed reserved folder (e.g. OpenAI Codex\'s own .system bundle), only real skills alongside it', async () => {
+    // Found via real-machine dogfooding: OpenAI Codex ships its own
+    // built-in skills under a `.system` folder, protected by its own
+    // `.codex-system-skills.marker` file signaling "Codex manages this,
+    // don't touch it". Before this fix, mergeSkillsIntoHub() had no
+    // dot-prefix filter at all (unlike discoverAllAvailableSkills(), the
+    // pick path) and would copy `.system` - marker file, nested OpenAI
+    // system skills, and all - into the shared hub, then cross-link it
+    // into every other agent via the junction.
+    const agentSkillsDir = path.join(tempDir, 'agent-with-system-bundle');
+
+    // Two real, normal skills alongside the reserved folder.
+    for (const name of ['real-skill-one', 'real-skill-two']) {
+      await ensureDir(path.join(agentSkillsDir, name));
+      await fsp.writeFile(
+        path.join(agentSkillsDir, name, 'SKILL.md'),
+        `---\nname: ${name}\ndescription: A real skill\n---\n\nBody\n`,
+        'utf-8'
+      );
+    }
+
+    // A Codex-style .system bundle: a marker file plus a nested "real"
+    // skill of its own (imagegen) - none of it should ever reach the hub.
+    const systemDir = path.join(agentSkillsDir, '.system');
+    await ensureDir(systemDir);
+    await fsp.writeFile(
+      path.join(systemDir, '.codex-system-skills.marker'),
+      'managed-by-codex',
+      'utf-8'
+    );
+    await ensureDir(path.join(systemDir, 'imagegen'));
+    await fsp.writeFile(
+      path.join(systemDir, 'imagegen', 'SKILL.md'),
+      `---\nname: imagegen\ndescription: OpenAI's built-in image generation skill\n---\n\nBody\n`,
+      'utf-8'
+    );
+
+    // A stray node_modules dir too, for the same reason .git would be.
+    await ensureDir(path.join(agentSkillsDir, 'node_modules', 'some-pkg'));
+
+    const mockAgent: DetectedAgent = {
+      id: 'codex',
+      name: 'OpenAI Codex',
+      displayName: 'OpenAI Codex',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentSkillsDir },
+      existingSkillsCount: 2,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+
+    const merged = await mergeSkillsIntoHub([mockAgent], tempHub);
+
+    // Only the 2 real skills were imported - nothing named after the
+    // reserved folders, and no nested imagegen/marker file either.
+    expect(merged.importedSkills.sort()).toEqual([
+      'OpenAI Codex / real-skill-one',
+      'OpenAI Codex / real-skill-two',
+    ]);
+
+    const hubSkills = await listSkillsInDirectory(tempHub);
+    expect(hubSkills.map((s) => s.dirName).sort()).toEqual(['real-skill-one', 'real-skill-two']);
+
+    expect(await pathExists(path.join(tempHub, '.system'))).toBe(false);
+    expect(await pathExists(path.join(tempHub, '.system', 'imagegen'))).toBe(false);
+    expect(
+      await pathExists(path.join(tempHub, '.system', '.codex-system-skills.marker'))
+    ).toBe(false);
+    expect(await pathExists(path.join(tempHub, 'node_modules'))).toBe(false);
+  });
+
   it('mergeSkillsIntoHub() with options.dryRun does not create the hub directory at all', async () => {
     // ensureDir(absHub) was previously unconditional - a dry-run promising
     // to "simulate actions without writing to disk" still left a stray
