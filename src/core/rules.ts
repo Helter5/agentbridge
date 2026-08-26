@@ -22,6 +22,13 @@ export interface RuleSyncOptions {
   mode?: 'symlink' | 'copy';
   targets?: RuleTargetType[];
   force?: boolean;
+  /**
+   * Snapshot existing target files (via rollback.ts's tracked snapshot
+   * system - the same one sync-mcp uses, restorable with
+   * `agentbridge rollback`) before overwriting them. Defaults to true.
+   * Set false (--no-backup) to skip it.
+   */
+  backupExisting?: boolean;
 }
 
 /**
@@ -153,42 +160,80 @@ export async function syncProjectRules(
 
   const results: RuleSyncResult['targets'] = [];
 
-  for (const type of targetTypes) {
-    const relPath = RULE_TARGET_FILES[type];
-    const targetPath = path.join(projectRoot, relPath);
+  // Snapshot every target file that's about to be overwritten (only ones
+  // that actually exist end up in the snapshot - createBackupSnapshot()
+  // silently no-ops otherwise) through rollback.ts's tracked snapshot
+  // system, same mechanism sync-mcp uses - so `agentbridge rollback` can
+  // restore these too. Distinct from link-skills' own separate, untracked
+  // backupPath() mechanism; this one deliberately goes through the shared
+  // system instead of reinventing it. The source file itself is excluded -
+  // it's never overwritten by this loop (see the self-skip check below).
+  const targetFilePaths = targetTypes
+    .map((type) => path.join(projectRoot, RULE_TARGET_FILES[type]))
+    .filter((targetPath) => path.resolve(targetPath) !== path.resolve(sourcePath));
 
-    // Skip if target is the same as source
-    if (path.resolve(targetPath) === path.resolve(sourcePath)) {
-      results.push({
-        fileName: relPath,
-        filePath: targetPath,
-        action: 'skipped',
-      });
-      continue;
-    }
+  const performSync = async () => {
+    for (const type of targetTypes) {
+      const relPath = RULE_TARGET_FILES[type];
+      const targetPath = path.join(projectRoot, relPath);
 
-    try {
-      await ensureDir(path.dirname(targetPath));
+      // Skip if target is the same as source
+      if (path.resolve(targetPath) === path.resolve(sourcePath)) {
+        results.push({
+          fileName: relPath,
+          filePath: targetPath,
+          action: 'skipped',
+        });
+        continue;
+      }
 
-      if (mode === 'symlink') {
-        const linkRes = await createCrossPlatformLink(sourcePath, targetPath, 'file');
-        if (linkRes.success) {
-          results.push({
-            fileName: relPath,
-            filePath: targetPath,
-            // createCrossPlatformLink() transparently falls back to a
-            // hardlink when the platform can't create a real symlink (e.g.
-            // Windows without Developer Mode/admin). Report that distinctly
-            // instead of claiming 'symlinked' - a hardlink has different
-            // staleness semantics (see the comment in createCrossPlatformLink).
-            action: linkRes.action === 'hardlinked' ? 'hardlinked' : 'symlinked',
-          });
+      try {
+        await ensureDir(path.dirname(targetPath));
+
+        if (mode === 'symlink') {
+          const linkRes = await createCrossPlatformLink(sourcePath, targetPath, 'file');
+          if (linkRes.success) {
+            results.push({
+              fileName: relPath,
+              filePath: targetPath,
+              // createCrossPlatformLink() transparently falls back to a
+              // hardlink when the platform can't create a real symlink (e.g.
+              // Windows without Developer Mode/admin). Report that distinctly
+              // instead of claiming 'symlinked' - a hardlink has different
+              // staleness semantics (see the comment in createCrossPlatformLink).
+              action: linkRes.action === 'hardlinked' ? 'hardlinked' : 'symlinked',
+            });
+          } else {
+            // Fallback to copy
+            const contentToWrite = `${AUTO_GENERATED_HEADER}${sourceContent}`;
+            const wrote = await withLock(
+              resolveSharedLockPath(),
+              async () => {
+                await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
+              },
+              { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
+            );
+            if (wrote === null) {
+              throw new Error(
+                'Another agentbridge process is currently modifying configs. Try again in a moment.'
+              );
+            }
+            results.push({
+              fileName: relPath,
+              filePath: targetPath,
+              action: 'created',
+            });
+          }
         } else {
-          // Fallback to copy
+          // Copy mode
           const contentToWrite = `${AUTO_GENERATED_HEADER}${sourceContent}`;
           const wrote = await withLock(
             resolveSharedLockPath(),
             async () => {
+              const isLink = await isSymlinkOrJunction(targetPath);
+              if (isLink) {
+                await fsp.unlink(targetPath);
+              }
               await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
             },
             { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
@@ -204,39 +249,28 @@ export async function syncProjectRules(
             action: 'created',
           });
         }
-      } else {
-        // Copy mode
-        const contentToWrite = `${AUTO_GENERATED_HEADER}${sourceContent}`;
-        const wrote = await withLock(
-          resolveSharedLockPath(),
-          async () => {
-            const isLink = await isSymlinkOrJunction(targetPath);
-            if (isLink) {
-              await fsp.unlink(targetPath);
-            }
-            await fsp.writeFile(targetPath, contentToWrite, 'utf-8');
-          },
-          { maxWaitMs: LOCK_RETRY_MAX_WAIT_MS }
-        );
-        if (wrote === null) {
-          throw new Error(
-            'Another agentbridge process is currently modifying configs. Try again in a moment.'
-          );
-        }
+      } catch (err: any) {
         results.push({
           fileName: relPath,
           filePath: targetPath,
-          action: 'created',
+          action: 'failed',
+          error: err.message || String(err),
         });
       }
-    } catch (err: any) {
-      results.push({
-        fileName: relPath,
-        filePath: targetPath,
-        action: 'failed',
-        error: err.message || String(err),
-      });
     }
+  };
+
+  if (options.backupExisting !== false) {
+    // Same tracked-snapshot mechanism sync-mcp uses (rollback.ts). Unlike
+    // mcp-sync's performSync, this one never throws on a per-target
+    // failure (each target's own try/catch above swallows it into
+    // results as action: 'failed') - so executeTransactionalOperation's
+    // own auto-rollback-on-throw path won't fire here; this call's only
+    // job is taking the snapshot up front and pruning old ones after.
+    const { executeTransactionalOperation } = await import('./rollback.js');
+    await executeTransactionalOperation('Rule Files Sync', targetFilePaths, performSync);
+  } else {
+    await performSync();
   }
 
   return {
