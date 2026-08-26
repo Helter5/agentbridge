@@ -21,6 +21,7 @@ src/
 │   ├── doctor.ts            # 5. Health Diagnostics Engine (security scan & repair)
 │   ├── rollback.ts          # Snapshot backup & restore
 │   └── watcher.ts           # Live file watcher daemon
+├── types/                   # Shared TypeScript types (client, doctor, mcp, rules, skill)
 ├── utils/
 │   ├── fs.ts                # Cross-platform junction / symlink helpers
 │   ├── schema.ts            # Zod validation, secret detection & YAML parser
