@@ -1,5 +1,5 @@
 {
-  "name": "agentbridge",
+  "name": "@helter/agentbridge",
   "version": "1.0.1",
   "description": "Universal Skill & MCP Sync Engine for AI Coding Agents (Antigravity, Claude Code, Codex)",
   "type": "module",
