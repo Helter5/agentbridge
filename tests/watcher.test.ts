@@ -141,4 +141,73 @@ describe('File Watcher Engine', () => {
 
     syncSpy.mockRestore();
   });
+
+  it('picks up AGENTS.md created after the watcher already started, not just one that existed at startup', async () => {
+    // Found via real-machine dogfooding: the old code only registered
+    // fs.watch() on AGENTS.md if it already existed at startup
+    // (`if (await pathExists(agentsMd)) { fs.watch(agentsMd, ...) }`) - a
+    // project without one yet (or an editor's atomic save deleting and
+    // recreating it, the same staleness risk already called out for
+    // --mode symlink) was invisible to an already-running watcher until it
+    // was restarted. Now watches the project root directory itself,
+    // filtered to the AGENTS.md filename, which doesn't require the file
+    // to exist yet.
+    //
+    // Uses its own fresh subdirectory, never beforeEach's tempDir (which
+    // already has an AGENTS.md) - deleting that file first to simulate
+    // "doesn't exist yet" turned out to be its own change event on some
+    // platforms (macOS FSEvents fired a 'rename' for the delete), and
+    // syncProjectRules() auto-creates a fresh AGENTS.md when none exists,
+    // so the delete alone was enough to trigger a real (if unintended)
+    // sync before this test's own write ever happened.
+    const freshProjectDir = path.join(tempDir, 'fresh-project-no-agents-md-yet');
+    await ensureDir(freshProjectDir);
+
+    const onRuleChange = vi.fn();
+    const onRuleSyncError = vi.fn();
+
+    const watcher = await startWatcher({
+      projectRoot: freshProjectDir,
+      debounceMs: 20,
+      onRuleChange,
+      onRuleSyncError,
+    });
+    closeFn = watcher.close;
+
+    // Initial reconciliation finds nothing (AGENTS.md doesn't exist yet) -
+    // confirm that, then create the file for the first time.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(onRuleChange).not.toHaveBeenCalled();
+    expect(onRuleSyncError).not.toHaveBeenCalled();
+
+    await fsp.writeFile(path.join(freshProjectDir, 'AGENTS.md'), '# Created after watch started\n', 'utf-8');
+    await new Promise((r) => setTimeout(r, 200)); // past debounceMs
+
+    expect(onRuleChange).toHaveBeenCalled();
+    const claudeMd = await fsp.readFile(path.join(freshProjectDir, 'CLAUDE.md'), 'utf-8');
+    expect(claudeMd).toContain('Created after watch started');
+  });
+
+  it('ignores an unrelated file change in the project root instead of resyncing on every write', async () => {
+    // The directory-level watch above filters to the AGENTS.md filename
+    // specifically - a change to some other file in the project root
+    // (package.json, a source file, .git internals, ...) must not trigger
+    // a resync.
+    const onRuleChange = vi.fn();
+
+    const watcher = await startWatcher({
+      projectRoot: tempDir,
+      debounceMs: 20,
+      onRuleChange,
+    });
+    closeFn = watcher.close;
+
+    await new Promise((r) => setTimeout(r, 50)); // let the initial sync land
+    onRuleChange.mockClear();
+
+    await fsp.writeFile(path.join(tempDir, 'unrelated-file.txt'), 'not AGENTS.md', 'utf-8');
+    await new Promise((r) => setTimeout(r, 150)); // past debounceMs
+
+    expect(onRuleChange).not.toHaveBeenCalled();
+  });
 });

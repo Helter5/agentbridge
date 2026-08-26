@@ -101,51 +101,68 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
   }
 
   // 2. Watch AGENTS.md in Project Workspace with Debounce
-  const agentsMd = path.join(projectRoot, 'AGENTS.md');
-  if (await pathExists(agentsMd)) {
-    try {
-      const rulesWatcher = fs.watch(agentsMd, (eventType) => {
-        if (ruleDebounceTimer) clearTimeout(ruleDebounceTimer);
-        ruleDebounceTimer = setTimeout(async () => {
-          // Only one file (AGENTS.md) is watched here, so there's no
-          // multi-file coalescing to worry about. syncProjectRules()
-          // re-reads AGENTS.md's full current content on every call
-          // rather than acting on `eventType`/a filename, so even
-          // multiple rapid saves debounced into one fire still produce a
-          // fully up-to-date resync - it doesn't matter how many writes
-          // happened in between, only what the file contains when this
-          // timer fires.
-          // syncProjectRules() locks its own writes internally (see rules.ts);
-          // no outer withLock here to avoid nesting on the same lockfile.
-          try {
-            // The result MUST be inspected, not discarded: syncProjectRules()
-            // catches its own per-target write failures internally (e.g. a
-            // target file locked by another concurrently-running agentbridge
-            // command) and returns them as `targets[].action === 'failed'`
-            // rather than throwing - a caller that fires a bare "success"
-            // callback on any resolution, ignoring the result, ends up
-            // reporting a clean sync even when every target actually failed.
-            const result = await syncProjectRules(projectRoot, { mode: 'copy' });
-            if (options.onRuleChange) {
-              options.onRuleChange(eventType, 'AGENTS.md', result);
-            }
-          } catch (err: any) {
-            // A genuine throw (e.g. AGENTS.md becomes unreadable between the
-            // change event and this read) - without this catch, it would
-            // escape as an unhandled rejection from this async setTimeout
-            // callback, silently killing the whole watch process with no
-            // clear message (see the initial-reconciliation sync above,
-            // which already has this same guard).
-            if (options.onRuleSyncError) {
-              options.onRuleSyncError(eventType, 'AGENTS.md', err.message || String(err));
-            }
+  //
+  // Watches the project root directory itself, filtered to AGENTS.md,
+  // rather than fs.watch(agentsMdPath, ...) on the file directly. Found via
+  // real-machine testing: a direct file watch only ever gets registered if
+  // AGENTS.md already exists at the moment `watch` starts (the old code's
+  // pathExists() gate below never re-ran) - so a project that gets its
+  // AGENTS.md created *after* `watch` is already running (a fresh project,
+  // or an editor's atomic save doing delete+rewrite - the same staleness
+  // risk already called out for --mode symlink) was silently invisible to
+  // the running watcher until it was restarted. A directory watch doesn't
+  // require the file to exist yet, and keeps working across a delete+
+  // recreate cycle since it's not watching a specific file handle.
+  try {
+    const rulesWatcher = fs.watch(projectRoot, (eventType, filename) => {
+      // filename can be null on platforms/filesystems that don't support
+      // it - can't filter in that case, so fall through and resync on any
+      // project-root change rather than silently doing nothing. Harmless
+      // (syncProjectRules() is idempotent and debounced), just occasionally
+      // more eager than strictly necessary.
+      if (filename !== null && filename !== 'AGENTS.md') {
+        return;
+      }
+      if (ruleDebounceTimer) clearTimeout(ruleDebounceTimer);
+      ruleDebounceTimer = setTimeout(async () => {
+        // Only one file (AGENTS.md) is watched here, so there's no
+        // multi-file coalescing to worry about. syncProjectRules()
+        // re-reads AGENTS.md's full current content on every call
+        // rather than acting on `eventType`/a filename, so even
+        // multiple rapid saves debounced into one fire still produce a
+        // fully up-to-date resync - it doesn't matter how many writes
+        // happened in between, only what the file contains when this
+        // timer fires.
+        // syncProjectRules() locks its own writes internally (see rules.ts);
+        // no outer withLock here to avoid nesting on the same lockfile.
+        try {
+          // The result MUST be inspected, not discarded: syncProjectRules()
+          // catches its own per-target write failures internally (e.g. a
+          // target file locked by another concurrently-running agentbridge
+          // command) and returns them as `targets[].action === 'failed'`
+          // rather than throwing - a caller that fires a bare "success"
+          // callback on any resolution, ignoring the result, ends up
+          // reporting a clean sync even when every target actually failed.
+          const result = await syncProjectRules(projectRoot, { mode: 'copy' });
+          if (options.onRuleChange) {
+            options.onRuleChange(eventType, 'AGENTS.md', result);
           }
-        }, debounceDelay);
-      });
-      watchers.push(rulesWatcher);
-    } catch {
-      // Non-critical
-    }
+        } catch (err: any) {
+          // A genuine throw (e.g. AGENTS.md becomes unreadable between the
+          // change event and this read) - without this catch, it would
+          // escape as an unhandled rejection from this async setTimeout
+          // callback, silently killing the whole watch process with no
+          // clear message (see the initial-reconciliation sync above,
+          // which already has this same guard).
+          if (options.onRuleSyncError) {
+            options.onRuleSyncError(eventType, 'AGENTS.md', err.message || String(err));
+          }
+        }
+      }, debounceDelay);
+    });
+    watchers.push(rulesWatcher);
+  } catch {
+    // Non-critical
   }
 
   return {
