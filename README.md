@@ -153,6 +153,15 @@ agentbridge sync-mcp --dry-run                      # Preview the merge without 
 agentbridge sync-mcp -y
 ```
 
+> **Secret Redaction:** `sync-mcp` never writes a plain-text secret to disk if it doesn't have to. Before writing any agent config, it checks each `env` value against your current OS environment variables - if a value exactly matches one (e.g. `GITHUB_PERSONAL_ACCESS_TOKEN`), it writes `${GITHUB_PERSONAL_ACCESS_TOKEN}` instead of the literal value. Set the variable once:
+> ```bash
+> # Windows (PowerShell)
+> [System.Environment]::SetEnvironmentVariable('GITHUB_PERSONAL_ACCESS_TOKEN', 'your-token', 'User')
+> # macOS/Linux - add to your shell profile (~/.zshrc, ~/.bash_profile, ...)
+> export GITHUB_PERSONAL_ACCESS_TOKEN=your-token
+> ```
+> then run `agentbridge sync-mcp` again - any agent's config still holding the literal value gets rewritten to the `${VAR}` reference automatically, no matter how many agents you have. `agentbridge doctor` flags any plain-text secret it finds (with this same fix in its warning text) but never sets an OS environment variable on your behalf - that's a real side effect on your machine only you should trigger, and only you know the right value.
+
 ### 5. `agentbridge sync-rules`
 Synchronizes project-level agent rules. Reads `AGENTS.md` as the single source-of-truth and mirrors or symlinks it to `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
 
