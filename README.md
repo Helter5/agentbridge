@@ -25,7 +25,7 @@ AgentBridge standardizes configurations across all environments:
 2. **Cross-Platform Zero-Privilege Linking**: Uses POSIX Symlinks on macOS/Linux and NTFS Directory Junctions on Windows (no elevated Administrator privileges required).
 3. **Lossless MCP Server Merging**: Deep-merges environment variables, arguments, and server configs across all client configuration files without clobbering custom agent settings.
 4. **Universal Project Rules**: Automatically consolidates and synchronizes `AGENTS.md` to `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
-5. **Transactional Rollbacks**: Automated snapshot backups before multi-agent synchronization with full restoration on failure.
+5. **Transactional Rollbacks**: Automated snapshot backups (restorable via `agentbridge rollback`) before `sync-mcp`/`sync-rules` operations. `link-skills` additionally creates its own pre-link backup folder (path logged to console) as a separate, non-rollback-tracked safety net.
 
 ---
 
