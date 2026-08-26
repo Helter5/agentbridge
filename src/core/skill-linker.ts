@@ -391,13 +391,17 @@ export async function linkAgentsToHub(
   }
 
   const allHubSkills = await listSkillsInDirectory(absHub);
+  // Same "only count a real SKILL.md" rule as status's Total Hub Skills -
+  // a broken/empty folder that got imported alongside real skills
+  // shouldn't inflate this summary count either.
+  const validHubSkillsCount = allHubSkills.filter((s) => s.isValid).length;
 
   return {
     hubPath: absHub,
     importedSkills,
     collisions,
     linkedAgents,
-    totalSkillsInHub: allHubSkills.length,
+    totalSkillsInHub: validHubSkillsCount,
   };
 }
 
@@ -713,8 +717,24 @@ export async function detectSkillCollisions(
   const collisions: SkillCollision[] = [];
   for (const [name, skills] of byName.entries()) {
     if (skills.length > 1) {
-      // Check if they are from different agents and not pointing to the exact same hub path
-      const uniquePaths = new Set(skills.map((s) => path.resolve(s.sourcePath)));
+      // Check if they are from different agents and not pointing to the exact same hub path.
+      // Two agents linked to the same hub folder (the normal post-link-skills state)
+      // each have their own symlink/junction under a different agent skills dir, so
+      // their sourcePath strings are never equal - path.resolve() alone can't tell
+      // they're the same file. realpath() follows the link/junction to the real
+      // underlying hub path, which IS equal for both, so this only flags a genuine
+      // collision (two truly separate directories). Falls back to path.resolve() for
+      // a path realpath can't resolve (e.g. a dangling symlink) rather than throwing.
+      const resolvedPaths = await Promise.all(
+        skills.map(async (s) => {
+          try {
+            return await fsp.realpath(s.sourcePath);
+          } catch {
+            return path.resolve(s.sourcePath);
+          }
+        })
+      );
+      const uniquePaths = new Set(resolvedPaths);
       if (uniquePaths.size > 1) {
         collisions.push({
           skillName: name,
