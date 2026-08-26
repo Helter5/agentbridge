@@ -12,7 +12,7 @@ Universal Skill & MCP Sync Engine for AI Coding Agents.
 
 ## What does this do?
 
-**Google Antigravity**, **Claude Code**, **OpenAI Codex**, and **Cursor** each keep their own private copy of your custom Skills, MCP servers, and project rules - in different folders, different file formats, none of them aware the others exist. Add a skill or an MCP server to one, and it's invisible to the rest until you copy it over by hand, every time, per agent.
+**Google Antigravity**, **Claude Code**, and **OpenAI Codex** each keep their own private copy of your custom Skills, MCP servers, and project rules - in different folders, different file formats, none of them aware the others exist. Add a skill or an MCP server to one, and it's invisible to the rest until you copy it over by hand, every time, per agent.
 
 AgentBridge fixes that with one shared hub (`~/.agentbridge/skills`) that every agent's own skills folder links to directly via a native OS symlink/junction - no daemon, no polling, no elevated privileges. Add a skill once, it's instantly available everywhere. MCP servers and project rules (`AGENTS.md` → `CLAUDE.md`/`GEMINI.md`/etc.) get merged and mirrored the same way with a single command instead of four manual edits.
 
@@ -50,12 +50,10 @@ flowchart TD
     Hub <== "Junction / Symlink" ==> G[Google Antigravity<br/>~/.gemini]
     Hub <== "Junction / Symlink" ==> C[Claude Code / Desktop<br/>~/.claude]
     Hub <== "Junction / Symlink" ==> O[OpenAI Codex<br/>~/.codex]
-    Hub <== "Junction / Symlink" ==> U[Cursor<br/>~/.cursor]
 
     MCPSync <== "Merge JSON" ==> G
     MCPSync <== "Merge JSON" ==> C
-    MCPSync <== "Merge JSON" ==> O
-    MCPSync <== "Merge JSON" ==> U
+    MCPSync <== "Merge TOML" ==> O
 
     Rules -->|source of truth| AGENTS[AGENTS.md]
     AGENTS -->|sync| CLAUDEMD[CLAUDE.md]
@@ -68,7 +66,7 @@ flowchart TD
     Rollback -.snapshot before write.-> Rules
 ```
 
-`Doctor` reads across the hub and all 4 agents for diagnostics but writes nothing on its own (`--fix` repairs broken links directly via the same cross-platform link helper `SkillLinker` uses, not by calling into `SkillLinker` itself), so it has no outgoing edges above. `SkillLinker`'s own pre-link backup (see `link-skills` below) is a separate mechanism from `Rollback` - that's why no edge connects them.
+`Doctor` reads across the hub and all 3 agents for diagnostics but writes nothing on its own (`--fix` repairs broken links directly via the same cross-platform link helper `SkillLinker` uses, not by calling into `SkillLinker` itself), so it has no outgoing edges above. `SkillLinker`'s own pre-link backup (see `link-skills` below) is a separate mechanism from `Rollback` - that's why no edge connects them.
 
 Key safety properties baked into every write path: automatic pre-write backups (`link-skills`, `sync-mcp`, `sync-rules` - see the Commands section below for exactly which mechanism each uses and how to restore), and secrets are never persisted in plain text if an equivalent OS environment variable already exists (see the Secret Redaction note under `sync-mcp`).
 
@@ -240,9 +238,9 @@ agentbridge watch --cwd ./my-repo   # Watch a specific project root instead of t
 |---|---|---|---|---|
 | **Google Antigravity** | `~/.gemini/config` | `~/.gemini/config/skills` | `mcp_config.json` | `GEMINI.md` |
 | **Claude Code** | `~/.claude` | `~/.claude/skills` | `claude_desktop_config.json` | `CLAUDE.md` |
-| **OpenAI Codex** | `~/.codex` | `~/.codex/skills` | `config.json` | `CODEX.md` |
-| **Cursor** | `~/.cursor` | `~/.cursor/skills` | `mcp.json` | `.cursorrules` |
-| — | — | — | — | `.github/copilot-instructions.md` *(GitHub Copilot is a `sync-rules` target only - it isn't skill/MCP-managed like the 4 agents above)* |
+| **OpenAI Codex** | `~/.codex` | `~/.codex/skills` | `config.toml` | `CODEX.md` |
+| — | — | — | — | `.cursorrules` *(Cursor is a `sync-rules` target only for now - it isn't skill/MCP-managed like the 3 agents above)* |
+| — | — | — | — | `.github/copilot-instructions.md` *(GitHub Copilot is a `sync-rules` target only - it isn't skill/MCP-managed like the 3 agents above)* |
 
 ---
 
