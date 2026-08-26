@@ -8,6 +8,7 @@ import {
   syncMcpConfigs,
 } from '../src/core/mcp-sync.js';
 import { safeWriteJson, safeReadJson, ensureDir } from '../src/utils/fs.js';
+import { readTomlFileWithDiagnostics } from '../src/utils/toml.js';
 import type { DetectedAgent } from '../src/types/client.js';
 import type { MCPConfigFile } from '../src/types/mcp.js';
 
@@ -577,5 +578,87 @@ describe('MCP Synchronizer Engine', () => {
         process.env[envVarName] = originalEnvValue;
       }
     }
+  });
+
+  it("syncs an MCP server into Codex's config.toml under [mcp_servers.*], preserving its own [projects.*] / [windows] sections untouched", async () => {
+    // Regression test: Codex reads MCP servers from config.toml's
+    // mcp_servers table (snake_case), not a config.json - a prior version
+    // of this tool wrote JSON to a config.json Codex never read at all,
+    // leaving it silently blind to every synced server. This also proves
+    // the TOML write-back doesn't clobber sections this tool doesn't own.
+    const codexConfigFile = path.join(tempDir, 'codex-config.toml');
+    await fsp.writeFile(
+      codexConfigFile,
+      [
+        "[projects.'c:\\users\\test\\myproject']",
+        'trust_level = "trusted"',
+        '',
+        '[windows]',
+        'sandbox = "elevated"',
+        '',
+      ].join('\n'),
+      'utf-8'
+    );
+
+    const mockAgents: DetectedAgent[] = [
+      {
+        id: 'codex',
+        name: 'OpenAI Codex',
+        displayName: 'OpenAI Codex',
+        isInstalled: true,
+        paths: {
+          configDir: tempDir,
+          skillsDir: path.join(tempDir, 'codex-skills'),
+          mcpConfigFile: codexConfigFile,
+          mcpConfigFormat: 'toml',
+        },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 0,
+        isLinkedToHub: false,
+      },
+    ];
+
+    const isolatedHubMcp = path.join(tempDir, 'isolated-toml-hub.json');
+    const summary = await syncMcpConfigs(mockAgents, {
+      masterHubPath: isolatedHubMcp,
+      outputPath: undefined,
+    });
+    expect(summary.results.every((r) => r.success)).toBe(true);
+
+    // syncMcpConfigs() has no incoming servers of its own here (only one
+    // agent, nothing to merge in from) - confirm collectMcpServers() itself
+    // can read a server back out of Codex's TOML by seeding one first, then
+    // re-collecting.
+    const seeded: DetectedAgent[] = [
+      {
+        ...mockAgents[0],
+      },
+    ];
+    await fsp.appendFile(
+      codexConfigFile,
+      ['', '[mcp_servers.postgres]', 'command = "mcp-server-postgres"', 'args = ["postgresql://localhost/app"]', ''].join(
+        '\n'
+      ),
+      'utf-8'
+    );
+    const { mergedServers } = await collectMcpServers(seeded, { masterHubPath: isolatedHubMcp });
+    expect(mergedServers.postgres).toEqual({
+      command: 'mcp-server-postgres',
+      args: ['postgresql://localhost/app'],
+    });
+
+    // Now sync it into a second, previously-empty Codex-style TOML file and
+    // confirm the existing [projects.*] / [windows] sections survive the
+    // write untouched.
+    const secondSummary = await syncMcpConfigs(seeded, { masterHubPath: isolatedHubMcp });
+    expect(secondSummary.results.every((r) => r.success)).toBe(true);
+
+    const { data, raw } = await readTomlFileWithDiagnostics(codexConfigFile);
+    expect(data?.mcpServers?.postgres).toEqual({
+      command: 'mcp-server-postgres',
+      args: ['postgresql://localhost/app'],
+    });
+    expect((raw?.projects as any)?.['c:\\users\\test\\myproject']?.trust_level).toBe('trusted');
+    expect((raw?.windows as any)?.sandbox).toBe('elevated');
   });
 });

@@ -217,17 +217,20 @@ describe('CLI Integration Tests', () => {
     };
 
     try {
+      // Codex reads MCP servers from config.toml's [mcp_servers.*] tables,
+      // not a config.json (see utils/toml.ts) - this fixture has to match
+      // that real on-disk format or agentbridge never even sees it as a
+      // second source, and the conflict this test exists to catch never
+      // triggers.
       fs.mkdirSync(path.join(fakeHome, '.codex'), { recursive: true });
       fs.writeFileSync(
-        path.join(fakeHome, '.codex', 'config.json'),
-        JSON.stringify({
-          mcpServers: {
-            postgres: {
-              command: 'npx',
-              args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://prod/app'],
-            },
-          },
-        }),
+        path.join(fakeHome, '.codex', 'config.toml'),
+        [
+          '[mcp_servers.postgres]',
+          'command = "npx"',
+          'args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://prod/app"]',
+          '',
+        ].join('\n'),
         'utf-8'
       );
 

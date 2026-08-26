@@ -15,6 +15,7 @@ import {
   interpolateEnvString,
   isEnvPlaceholder,
 } from '../utils/schema.js';
+import { readTomlFileWithDiagnostics, writeTomlMcpConfig, isTomlConfigFile } from '../utils/toml.js';
 import { DEFAULT_MASTER_MCP_PATH } from '../constants.js';
 import type { DetectedAgent } from '../types/client.js';
 import type {
@@ -69,6 +70,26 @@ async function readJsonFileWithDiagnostics<T = unknown>(
   } catch {
     return { data: null, invalid: true };
   }
+}
+
+/**
+ * Format-dispatching counterpart of readJsonFileWithDiagnostics(), for
+ * callers that need to handle both an agent's JSON config (every agent but
+ * Codex) and TOML config (Codex's config.toml, see utils/toml.ts) through
+ * one path. `raw` carries the full on-disk document - for JSON that's the
+ * same object as `data`; for TOML it's the whole parsed file (including
+ * sections this tool doesn't own, e.g. Codex's `[projects.*]`) so a caller
+ * writing back can preserve everything it isn't explicitly changing.
+ */
+async function readAgentMcpConfig(
+  filePath: string,
+  isToml: boolean
+): Promise<{ data: MCPConfigFile | null; raw: Record<string, unknown> | null; invalid: boolean }> {
+  if (isToml) {
+    return readTomlFileWithDiagnostics(filePath);
+  }
+  const { data, invalid } = await readJsonFileWithDiagnostics<MCPConfigFile>(filePath);
+  return { data, raw: data as Record<string, unknown> | null, invalid };
 }
 
 /**
@@ -211,7 +232,10 @@ export async function collectMcpServers(
     const filePath = expandHome(agent.paths.mcpConfigFile);
     if (!(await pathExists(filePath))) continue;
 
-    const { data: fileContent, invalid } = await readJsonFileWithDiagnostics<MCPConfigFile>(filePath);
+    const { data: fileContent, invalid } = await readAgentMcpConfig(
+      filePath,
+      isTomlConfigFile(filePath)
+    );
     if (invalid) {
       invalidConfigs.push({ agentId: agent.id, agentName: agent.name, filePath });
       continue;
@@ -306,7 +330,9 @@ export async function syncMcpConfigs(
       };
 
       try {
+        const isToml = isTomlConfigFile(filePath);
         let existingConfig: MCPConfigFile = {};
+        let existingRaw: Record<string, unknown> | null = null;
         if (await pathExists(filePath)) {
           // A parse failure here is intentionally treated the same as
           // "file absent" for the write itself (existingConfig stays {}),
@@ -314,8 +340,9 @@ export async function syncMcpConfigs(
           // result.configWasInvalid (set above from collectMcpServers'
           // pass over the same files) lets the caller warn the user
           // instead of reporting a silent, misleading "success".
-          const { data } = await readJsonFileWithDiagnostics<MCPConfigFile>(filePath);
+          const { data, raw } = await readAgentMcpConfig(filePath, isToml);
           existingConfig = data || {};
+          existingRaw = raw;
         }
 
         const existingServers = existingConfig.mcpServers || {};
@@ -338,8 +365,18 @@ export async function syncMcpConfigs(
             await backupPath(filePath);
           }
           await ensureDir(path.dirname(filePath));
-          existingConfig.mcpServers = redactServerConfigsEnv(newServers);
-          await safeWriteJson(filePath, existingConfig);
+          const redacted = redactServerConfigsEnv(newServers);
+          if (isToml) {
+            // existingRaw carries every section of the on-disk TOML this
+            // tool doesn't own (Codex's own `[projects.*]` trust levels,
+            // `[windows]` sandbox setting) - writeTomlMcpConfig() only
+            // replaces the `mcp_servers` table, same as existingConfig
+            // above already does implicitly for JSON agents.
+            await writeTomlMcpConfig(filePath, existingRaw, redacted);
+          } else {
+            existingConfig.mcpServers = redacted;
+            await safeWriteJson(filePath, existingConfig);
+          }
         }
 
         result.success = true;

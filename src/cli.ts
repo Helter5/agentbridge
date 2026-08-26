@@ -873,7 +873,14 @@ program
     const watcher = await startWatcher({
       projectRoot: options.cwd,
       onSkillChange: (event, filename) => {
-        p.log.message(`${icons.link} Skill change detected: ${pc.cyan(filename || 'unknown')} (${event})`);
+        // filename comes back null from Node's fs.watch on Windows when the
+        // change crosses a junction/reparse point (our hub -> per-agent
+        // symlinked skills dirs) - ReadDirectoryChangesW doesn't always
+        // resolve a name in that case. Not a bug: the resync still runs off
+        // `event` alone, so just label it honestly instead of the
+        // misleading literal "unknown" (which reads like a real filename).
+        const label = filename ? pc.cyan(filename) : pc.dim('(name unavailable across junction)');
+        p.log.message(`${icons.link} Skill change detected: ${label} (${event})`);
       },
       onRuleChange: (event, filename, result) => {
         // result.targets can carry per-target 'failed' entries (e.g. a

@@ -17,6 +17,7 @@ import {
   parseFrontmatter,
   detectPotentialSecrets,
 } from '../utils/schema.js';
+import { readTomlFileWithDiagnostics, isTomlConfigFile } from '../utils/toml.js';
 import { detectInstalledAgents, DEFAULT_HUB_SKILLS_PATH } from './detector.js';
 import { listSkillsInDirectory, getHubSkillsPath } from './skill-linker.js';
 import type { HealthCheckItem, DoctorReport, DiagnosticSeverity } from '../types/doctor.js';
@@ -297,9 +298,23 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
     if (!agent.paths.mcpConfigFile) continue;
     const mcpFile = expandHome(agent.paths.mcpConfigFile);
     if (await pathExists(mcpFile)) {
+      const isToml = isTomlConfigFile(mcpFile);
+      const formatLabel = isToml ? 'TOML' : 'JSON';
       try {
-        const content = await fsp.readFile(mcpFile, 'utf-8');
-        const json = JSON.parse(content);
+        let json: Record<string, unknown>;
+        if (isToml) {
+          // TOML's own mcp_servers -> mcpServers key mapping happens inside
+          // readTomlFileWithDiagnostics() (utils/toml.ts) so validation and
+          // secret-scanning below stay format-agnostic past this point.
+          const { data, invalid } = await readTomlFileWithDiagnostics(mcpFile);
+          if (invalid) {
+            throw new Error(`unable to parse ${mcpFile} as TOML`);
+          }
+          json = data || {};
+        } else {
+          const content = await fsp.readFile(mcpFile, 'utf-8');
+          json = JSON.parse(content);
+        }
         const validation = validateMCPConfigFile(json);
         if (validation.isValid) {
           const serverCount = Object.keys(json.mcpServers || {}).length;
@@ -358,7 +373,7 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
             id: `mcp-config-${agent.id}`,
             category: 'mcp',
             title: `${agent.displayName} MCP Config`,
-            description: `Valid JSON schema with ${serverCount} configured server(s)`,
+            description: `Valid ${formatLabel} schema with ${serverCount} configured server(s)`,
             status: 'success',
             fixable: false,
           });
@@ -377,7 +392,7 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
           id: `mcp-config-${agent.id}`,
           category: 'mcp',
           title: `${agent.displayName} MCP Config Syntax`,
-          description: `Invalid JSON syntax in ${mcpFile}: ${err.message}`,
+          description: `Invalid ${formatLabel} syntax in ${mcpFile}: ${err.message}`,
           status: 'error',
           fixable: false,
         });

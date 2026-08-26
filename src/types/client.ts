@@ -8,6 +8,15 @@ export interface AgentConfigPaths {
   configDir: string;
   skillsDir: string;
   mcpConfigFile?: string;
+  /**
+   * On-disk format of mcpConfigFile. Defaults to 'json' when unset - every
+   * supported agent except Codex uses JSON. Codex's config.toml is real
+   * TOML (see utils/toml.ts): reading/writing it as JSON silently no-ops
+   * (JSON.parse throws on TOML, or worse, succeeds on an unrelated file)
+   * without this discriminator telling mcp-sync.ts / doctor.ts which
+   * parser to use.
+   */
+  mcpConfigFormat?: 'json' | 'toml';
   globalRulesFile?: string;
   settingsFile?: string;
 }
@@ -21,6 +30,7 @@ export interface AgentDefinition {
   defaultPaths: {
     skillsDir: string;
     mcpConfigFile?: string;
+    mcpConfigFormat?: 'json' | 'toml';
     globalRulesFile?: string;
     settingsFile?: string;
   };

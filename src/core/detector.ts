@@ -8,6 +8,7 @@ import {
   readLinkTarget,
   safeReadJson,
 } from '../utils/fs.js';
+import { readTomlFileWithDiagnostics, isTomlConfigFile } from '../utils/toml.js';
 import type {
   AgentId,
   AgentDefinition,
@@ -60,10 +61,18 @@ async function countSkillsInDir(skillsDir: string): Promise<number> {
 }
 
 /**
- * Counts configured MCP servers in a given config file
+ * Counts configured MCP servers in a given config file. Branches on
+ * isTomlConfigFile() rather than trusting a passed-in format flag, so a
+ * caller that only has the path (no AgentDefinition alongside it) still
+ * gets the right parser - same reasoning as isTomlConfigFile() itself.
  */
 async function countMcpServers(configFile?: string): Promise<number> {
   if (!configFile) return 0;
+  if (isTomlConfigFile(configFile)) {
+    const { data } = await readTomlFileWithDiagnostics(configFile);
+    if (!data?.mcpServers || typeof data.mcpServers !== 'object') return 0;
+    return Object.keys(data.mcpServers).length;
+  }
   const json = await safeReadJson<MCPConfigFile>(configFile);
   if (!json || !json.mcpServers || typeof json.mcpServers !== 'object') return 0;
   return Object.keys(json.mcpServers).length;
@@ -138,6 +147,7 @@ export async function detectInstalledAgents(
       configDir,
       skillsDir,
       mcpConfigFile: actualMcpFile,
+      mcpConfigFormat: def.defaultPaths.mcpConfigFormat,
       globalRulesFile,
       settingsFile,
     };

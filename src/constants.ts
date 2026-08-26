@@ -101,7 +101,13 @@ export const SUPPORTED_AGENTS: Record<AgentId, AgentDefinition> = {
     description: 'OpenAI Codex Developer Agent CLI',
     defaultPaths: {
       skillsDir: '~/.codex/skills',
-      mcpConfigFile: '~/.codex/config.json',
+      // Real Codex CLI reads MCP servers from config.toml's [mcp_servers.*]
+      // tables, not a config.json - confirmed by inspecting an actual
+      // installed Codex's config on a real machine (config.json isn't read
+      // at all; a prior sync writing there left Codex silently blind to
+      // every synced server despite that file looking perfectly valid).
+      mcpConfigFile: '~/.codex/config.toml',
+      mcpConfigFormat: 'toml',
       globalRulesFile: '~/.codex/CODEX.md',
       settingsFile: '~/.codex/settings.json',
     },
