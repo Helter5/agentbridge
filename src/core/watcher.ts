@@ -79,6 +79,17 @@ export async function startWatcher(options: WatcherOptions = {}): Promise<{
         hubSkillsPath,
         { recursive: true },
         (eventType, filename) => {
+          // Ignore dot-prefixed entries at the hub root - same reserved
+          // treatment mergeSkillsIntoHub() already gives them (never real
+          // skills). Found via a long real-machine watch session: doctor's
+          // own hub-write-access check creates and deletes a `.test-write`
+          // file inside the hub on every run, and with no filter here that
+          // showed up as a "Skill change detected" log line each time -
+          // confusing noise with nothing to do with an actual skill.
+          const topLevelEntry = filename ? filename.split(/[\\/]/)[0] : null;
+          if (topLevelEntry && topLevelEntry.startsWith('.')) {
+            return;
+          }
           if (skillDebounceTimer) clearTimeout(skillDebounceTimer);
           skillDebounceTimer = setTimeout(async () => {
             await withLock(lockFilePath, async () => {

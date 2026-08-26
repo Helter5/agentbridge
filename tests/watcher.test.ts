@@ -210,4 +210,43 @@ describe('File Watcher Engine', () => {
 
     expect(onRuleChange).not.toHaveBeenCalled();
   });
+
+  it('ignores doctor\'s own .test-write housekeeping file in the hub, but still reports a real skill change', async () => {
+    // Found during a long real-machine watch session: doctor's
+    // hub-write-access check creates and deletes a `.test-write` file
+    // inside the hub on every run (see doctor.ts) - with no filter here,
+    // every doctor invocation showed up as a "Skill change detected" log
+    // line, indistinguishable from an actual skill edit. Same reserved-
+    // entry treatment mergeSkillsIntoHub() already gives dot-prefixed hub
+    // entries (never real skills).
+    const isolatedHub = path.join(tempDir, 'isolated-hub');
+    await ensureDir(isolatedHub);
+
+    const onSkillChange = vi.fn();
+    const watcher = await startWatcher({
+      projectRoot: tempDir,
+      hubPath: isolatedHub,
+      debounceMs: 20,
+      onSkillChange,
+    });
+    closeFn = watcher.close;
+
+    await new Promise((r) => setTimeout(r, 50)); // let the watcher register
+
+    // Simulate doctor's own write-permission check: create then delete
+    // `.test-write` at the hub root.
+    const testWritePath = path.join(isolatedHub, '.test-write');
+    await fsp.writeFile(testWritePath, '', 'utf-8');
+    await fsp.rm(testWritePath, { force: true });
+    await new Promise((r) => setTimeout(r, 150)); // past debounceMs
+
+    expect(onSkillChange).not.toHaveBeenCalled();
+
+    // A real skill change in the same hub must still be reported.
+    await ensureDir(path.join(isolatedHub, 'real-skill'));
+    await fsp.writeFile(path.join(isolatedHub, 'real-skill', 'SKILL.md'), 'Body', 'utf-8');
+    await new Promise((r) => setTimeout(r, 150)); // past debounceMs
+
+    expect(onSkillChange).toHaveBeenCalled();
+  });
 });
