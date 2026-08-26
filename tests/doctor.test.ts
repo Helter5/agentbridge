@@ -33,6 +33,19 @@ describe('Doctor & Health Diagnostics Engine', () => {
 
     const symlinkCheck = report.checks.find((c) => c.id === 'symlink-capability');
     expect(symlinkCheck).toBeDefined();
+
+    // Parity check with skill-collisions: doctor also reports on MCP
+    // servers independently configured with conflicting definitions
+    // across agents (see mcp-sync.test.ts for the collision-detection
+    // logic itself - this only confirms doctor surfaces it as a check).
+    // Read-only: runDiagnostics() only reads agent config files here,
+    // never write - deliberately not calling fixDiagnostics() on this
+    // report, since it also contains real, unmocked agent-link checks
+    // from the real detectInstalledAgents() call (see the doctor.test.ts
+    // fix a few commits back for what goes wrong if it is).
+    const mcpCollisionCheck = report.checks.find((c) => c.id === 'mcp-server-collisions');
+    expect(mcpCollisionCheck).toBeDefined();
+    expect(['success', 'warning']).toContain(mcpCollisionCheck?.status);
   });
 
   it('flags and can clean up a reserved folder (e.g. a leaked .system bundle) that ended up in the hub before the mergeSkillsIntoHub() filter existed', async () => {

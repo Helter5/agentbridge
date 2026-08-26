@@ -15,6 +15,7 @@ import type {
   MCPServerConfig,
   MCPConfigFile,
   MCPServerEntry,
+  MCPServerCollision,
   MCPSyncResult,
   MCPSyncSummary,
 } from '../types/mcp.js';
@@ -62,6 +63,37 @@ async function readJsonFileWithDiagnostics<T = unknown>(
   } catch {
     return { data: null, invalid: true };
   }
+}
+
+/**
+ * Describes which fields two definitions of the "same" MCP server (same
+ * name, independently configured in two different agents) genuinely
+ * disagree on - i.e. where mergeServerConfig() below would silently keep
+ * one side's value and discard the other's, not just add something new.
+ * A key present in only one side's `env` isn't a conflict (it's a union,
+ * both survive) - only a key present in both with a different value is,
+ * since the later side wins there. Same reasoning for `args`: it's only
+ * ever wholesale-replaced (never merged) when the incoming side also sets
+ * `command`, so a difference only matters in that case.
+ */
+function describeServerConflicts(a: MCPServerConfig, b: MCPServerConfig): string[] {
+  const diffs: string[] = [];
+  if (a.command && b.command && a.command !== b.command) {
+    diffs.push('command');
+  }
+  if (b.command && a.args !== undefined && b.args !== undefined) {
+    if (JSON.stringify(a.args) !== JSON.stringify(b.args)) {
+      diffs.push('args');
+    }
+  }
+  const envA = a.env || {};
+  const envB = b.env || {};
+  for (const key of Object.keys(envA)) {
+    if (key in envB && envA[key] !== envB[key]) {
+      diffs.push(`env.${key}`);
+    }
+  }
+  return diffs;
 }
 
 /**
@@ -130,10 +162,12 @@ export async function collectMcpServers(
   serverSources: Record<string, string[]>;
   serverEntries: MCPServerEntry[];
   invalidConfigs: { agentId: string; agentName: string; filePath: string }[];
+  collisions: MCPServerCollision[];
 }> {
   const mergedServers: Record<string, MCPServerConfig> = {};
   const serverSources: Record<string, string[]> = {};
   const invalidConfigs: { agentId: string; agentName: string; filePath: string }[] = [];
+  const collisions: MCPServerCollision[] = [];
 
   // 1. Read master hub registry if present
   const masterHubPath = path.resolve(
@@ -176,12 +210,24 @@ export async function collectMcpServers(
         mergedServers[serverName] = { ...config };
         serverSources[serverName] = [agent.name];
       } else {
+        // Unlike detectSkillCollisions() (skill-linker.ts), this check must
+        // happen BEFORE the merge below overwrites the losing side - the
+        // whole point is catching what mergeServerConfig() is about to
+        // silently discard.
+        const conflictingFields = describeServerConflicts(mergedServers[serverName], config);
         mergedServers[serverName] = mergeServerConfig(
           mergedServers[serverName],
           config
         );
         if (!serverSources[serverName].includes(agent.name)) {
           serverSources[serverName].push(agent.name);
+        }
+        if (conflictingFields.length > 0) {
+          collisions.push({
+            serverName,
+            conflictingFields,
+            sources: [...serverSources[serverName]],
+          });
         }
       }
     }
@@ -195,7 +241,7 @@ export async function collectMcpServers(
     })
   );
 
-  return { mergedServers, serverSources, serverEntries, invalidConfigs };
+  return { mergedServers, serverSources, serverEntries, invalidConfigs, collisions };
 }
 
 /**
@@ -205,7 +251,7 @@ export async function syncMcpConfigs(
   agents: DetectedAgent[],
   options: MCPSyncOptions = {}
 ): Promise<MCPSyncSummary> {
-  const { mergedServers, serverSources, invalidConfigs } = await collectMcpServers(agents, {
+  const { mergedServers, serverSources, invalidConfigs, collisions } = await collectMcpServers(agents, {
     masterHubPath: options.masterHubPath,
   });
   const results: MCPSyncResult[] = [];
@@ -325,5 +371,6 @@ export async function syncMcpConfigs(
     serverSources,
     results,
     invalidConfigs,
+    collisions,
   };
 }

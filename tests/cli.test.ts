@@ -203,6 +203,57 @@ describe('CLI Integration Tests', () => {
     }
   });
 
+  it('sync-mcp warns when two agents independently configure the same MCP server name with genuinely conflicting definitions', async () => {
+    // Previously silent: mergeServerConfig() let the later-processed
+    // agent's command/args/env values win over an earlier agent's
+    // conflicting ones with no warning to the user at all - unlike the
+    // equivalent skill-name-collision warning link-skills already had.
+    const fakeHome = path.join(os.tmpdir(), `agentbridge-cli-mcp-conflict-test-${Date.now()}`);
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+      APPDATA: path.join(fakeHome, 'AppData', 'Roaming'),
+    };
+
+    try {
+      fs.mkdirSync(path.join(fakeHome, '.codex'), { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeHome, '.codex', 'config.json'),
+        JSON.stringify({
+          mcpServers: {
+            postgres: {
+              command: 'npx',
+              args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://prod/app'],
+            },
+          },
+        }),
+        'utf-8'
+      );
+
+      fs.mkdirSync(path.join(fakeHome, '.gemini', 'config'), { recursive: true });
+      fs.writeFileSync(
+        path.join(fakeHome, '.gemini', 'config', 'mcp_config.json'),
+        JSON.stringify({
+          mcpServers: {
+            postgres: {
+              command: 'npx',
+              args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://staging/app'],
+            },
+          },
+        }),
+        'utf-8'
+      );
+
+      const { stdout } = await execFileAsync('node', [cliPath, 'sync-mcp', '--yes'], { env });
+      expect(stdout).toContain('postgres');
+      expect(stdout).toContain('args');
+      expect(stdout).toContain('differ across');
+    } finally {
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
   it('sync-rules with a nonexistent --cwd errors instead of silently creating a whole new project directory tree', async () => {
     // Found via manual testing: --cwd pointing at a path that doesn't exist
     // didn't error at all - it silently created the entire directory

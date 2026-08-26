@@ -450,6 +450,12 @@ program
 
     s.stop('MCP synchronization complete!');
 
+    for (const collision of summary.collisions) {
+      p.log.warn(
+        `${pc.bold(collision.serverName)}: definitions differ across ${collision.sources.join(', ')} on ${collision.conflictingFields.join(', ')} - only the later agent's value was kept for those fields.`
+      );
+    }
+
     for (const res of summary.results) {
       if (res.success && res.configWasInvalid) {
         p.log.warn(

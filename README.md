@@ -60,6 +60,7 @@ flowchart TD
     Rules -->|source of truth| AGENTS[AGENTS.md]
     AGENTS -->|sync| CLAUDEMD[CLAUDE.md]
     AGENTS -->|sync| GEMINIMD[GEMINI.md]
+    AGENTS -->|sync| CODEXMD[CODEX.md]
     AGENTS -->|sync| CURSORRULES[.cursorrules]
     AGENTS -->|sync| COPILOT[.github/copilot-instructions.md]
 
@@ -105,12 +106,22 @@ Most commands accept `--hub <path>` to override the default `~/.agentbridge/skil
 | 2 | `pick` (alias `import`) | Interactively choose which skills/MCPs to import | `--target`, `--hub` |
 | 3 | `link-skills` | Merge existing skills into the hub, link every agent to it | `--dry-run`, `--no-backup`, `-y`, `--hub` |
 | 4 | `sync-mcp` | Merge & mirror MCP servers across all agent configs | `--output`, `--dry-run`, `-y` |
-| 5 | `sync-rules` | Sync `AGENTS.md` to `CLAUDE.md`/`GEMINI.md`/`.cursorrules`/copilot | `--mode`, `--cwd`, `-y`, `--no-backup` |
+| 5 | `sync-rules` | Sync `AGENTS.md` to `CLAUDE.md`/`GEMINI.md`/`CODEX.md`/`.cursorrules`/copilot | `--mode`, `--cwd`, `-y`, `--no-backup` |
 | 6 | `add-skill <name>` | Scaffold a new skill directly in the hub | `--desc`, `--tags`, `--author`, `--hub` |
-| 7 | `doctor` | Health check: broken links, exposed secrets, name collisions | `--fix`, `--hub` |
+| 7 | `doctor` | Health check: broken links, exposed secrets, name/MCP-server conflicts | `--fix`, `--hub` |
 | 8 | `unlink` | Disconnect agents from the hub, restore standalone copies | `--no-restore`, `-y` |
 | 9 | `rollback` | List or restore automatic backup snapshots | `--list`, `<snapshot-id>` |
 | 10 | `watch` | Live auto-sync for the skills hub and `AGENTS.md` | `--cwd` |
+
+**Common flags** (same meaning everywhere they appear):
+
+| Flag | Meaning |
+|---|---|
+| `-y`, `--yes` | Skip the confirmation prompt |
+| `--dry-run` | Preview what would happen, write nothing to disk |
+| `--no-backup` | Skip the automatic pre-write backup for this run |
+| `--hub <path>` | Use a different hub directory instead of `~/.agentbridge/skills` |
+| `--json` | Machine-readable output instead of the formatted table (`status` only) |
 
 ### 1. `agentbridge status`
 Scans the system and presents an ASCII table overview of all installed AI coding agents, skills counts, hub linking status, and configured MCP servers.
@@ -159,8 +170,10 @@ agentbridge sync-mcp -y
 > ```
 > then run `agentbridge sync-mcp` again - any agent's config still holding the literal value gets rewritten to the `${VAR}` reference automatically, no matter how many agents you have. `agentbridge doctor` flags any plain-text secret it finds (with this same fix in its warning text) but never sets an OS environment variable on your behalf - that's a real side effect on your machine only you should trigger, and only you know the right value.
 
+> **MCP Server Conflict Detection:** if two agents independently define a server with the same name but genuinely different `command`, `args`, or an overlapping `env` key with a different value, `sync-mcp` merges them field-by-field - the later-processed agent's value silently wins on the fields that actually conflict (an env key present in only one side isn't a conflict; both survive). `sync-mcp` prints a warning naming the server, which fields disagreed, and which agents disagreed; `agentbridge doctor` reports the same thing as a persistent check ("MCP Server Conflicts") so it shows up even between syncs. Neither auto-resolves it - only you know which agent's definition should actually win. Re-run `sync-mcp` after fixing the losing agent's config directly, or edit the merged result via `sync-mcp --output`.
+
 ### 5. `agentbridge sync-rules`
-Synchronizes project-level agent rules. Reads `AGENTS.md` as the single source-of-truth and mirrors or symlinks it to `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
+Synchronizes project-level agent rules. Reads `AGENTS.md` as the single source-of-truth and mirrors or symlinks it to `CLAUDE.md`, `GEMINI.md`, `CODEX.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
 
 ```bash
 agentbridge sync-rules
@@ -180,7 +193,7 @@ agentbridge add-skill database-migration --desc "Automated PostgreSQL schema mig
 ```
 
 ### 7. `agentbridge doctor`
-Runs health diagnostics: audits plain-text tokens and secrets in MCP configs, detects skill name collisions, checks junction integrity, and repairs broken links with `--fix`.
+Runs health diagnostics: audits plain-text tokens and secrets in MCP configs, detects skill name collisions and same-named MCP servers with conflicting definitions across agents, checks junction integrity, and repairs broken links with `--fix`.
 
 ```bash
 agentbridge doctor
@@ -223,7 +236,7 @@ agentbridge watch --cwd ./my-repo   # Watch a specific project root instead of t
 |---|---|---|---|---|
 | **Google Antigravity** | `~/.gemini/config` | `~/.gemini/config/skills` | `mcp_config.json` | `GEMINI.md` |
 | **Claude Code** | `~/.claude` | `~/.claude/skills` | `claude_desktop_config.json` | `CLAUDE.md` |
-| **OpenAI Codex** | `~/.codex` | `~/.codex/skills` | `config.json` | — *(not a `sync-rules` target yet)* |
+| **OpenAI Codex** | `~/.codex` | `~/.codex/skills` | `config.json` | `CODEX.md` |
 | **Cursor** | `~/.cursor` | `~/.cursor/skills` | `mcp.json` | `.cursorrules` |
 | — | — | — | — | `.github/copilot-instructions.md` *(GitHub Copilot is a `sync-rules` target only - it isn't skill/MCP-managed like the 4 agents above)* |
 
