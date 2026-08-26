@@ -8,24 +8,13 @@
 
 Universal Skill & MCP Sync Engine for AI Coding Agents.
 
-Unify, link, and mirror custom **Skills**, **Model Context Protocol (MCP) servers**, and **Project Rules** across **Google Antigravity**, **Claude Code**, **OpenAI Codex**, and **Cursor** on macOS, Linux, and Windows.
-
 ---
 
-## Overview
+## What does this do?
 
-AI Coding Agents utilize distinct filesystem hierarchies and configuration specifications:
-- **Google Antigravity** stores skills in `~/.gemini/config/skills` and MCP configurations in `mcp_config.json`.
-- **Claude Code** manages skills in `~/.claude/skills` and desktop MCP servers in `claude_desktop_config.json`.
-- **OpenAI Codex** stores skills in `~/.codex/skills` and configurations in `~/.codex/config.json`.
-- **Cursor** configures MCP servers and skills in `~/.cursor/`.
+**Google Antigravity**, **Claude Code**, **OpenAI Codex**, and **Cursor** each keep their own private copy of your custom Skills, MCP servers, and project rules - in different folders, different file formats, none of them aware the others exist. Add a skill or an MCP server to one, and it's invisible to the rest until you copy it over by hand, every time, per agent.
 
-AgentBridge standardizes configurations across all environments:
-1. **Single Source of Truth**: Establishes a unified hub at `~/.agentbridge/skills`.
-2. **Cross-Platform Zero-Privilege Linking**: Uses POSIX Symlinks on macOS/Linux and NTFS Directory Junctions on Windows (no elevated Administrator privileges required).
-3. **Lossless MCP Server Merging**: Deep-merges environment variables, arguments, and server configs across all client configuration files without clobbering custom agent settings.
-4. **Universal Project Rules**: Automatically consolidates and synchronizes `AGENTS.md` to `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
-5. **Transactional Rollbacks**: Automated snapshot backups (restorable via `agentbridge rollback`) before `sync-mcp` and `sync-rules` operations. `link-skills` additionally creates its own pre-link backup folder (path logged to console) as a separate, non-rollback-tracked safety net.
+AgentBridge fixes that with one shared hub (`~/.agentbridge/skills`) that every agent's own skills folder links to directly via a native OS symlink/junction - no daemon, no polling, no elevated privileges. Add a skill once, it's instantly available everywhere. MCP servers and project rules (`AGENTS.md` → `CLAUDE.md`/`GEMINI.md`/etc.) get merged and mirrored the same way with a single command instead of four manual edits.
 
 ---
 
@@ -78,42 +67,50 @@ flowchart TD
     Rollback -.snapshot before write.-> Rules
 ```
 
-`Doctor` reads across the hub and all 4 agents for diagnostics but writes nothing on its own (`--fix` repairs broken links directly via the same cross-platform link helper `SkillLinker` uses, not by calling into `SkillLinker` itself), so it has no outgoing edges above. `SkillLinker`'s own pre-link backup (see `link-skills` above) is a separate mechanism from `Rollback` - that's why no edge connects them.
+`Doctor` reads across the hub and all 4 agents for diagnostics but writes nothing on its own (`--fix` repairs broken links directly via the same cross-platform link helper `SkillLinker` uses, not by calling into `SkillLinker` itself), so it has no outgoing edges above. `SkillLinker`'s own pre-link backup (see `link-skills` below) is a separate mechanism from `Rollback` - that's why no edge connects them.
+
+Key safety properties baked into every write path: automatic pre-write backups (`link-skills`, `sync-mcp`, `sync-rules` - see the Commands section below for exactly which mechanism each uses and how to restore), and secrets are never persisted in plain text if an equivalent OS environment variable already exists (see the Secret Redaction note under `sync-mcp`).
 
 ---
 
-## Quickstart
+## Quick Setup
 
-Run directly without global installation using `npx`:
+**Requirements:** Node.js ≥18.0.0.
+
+Run directly without installing, using `npx`:
 
 ```bash
-# Check detected agents, active skills, and MCP servers
-npx agentbridge status
-
-# Interactively pick and selectively import skills / MCPs
-npx agentbridge pick
-
-# Merge and link skills across all detected agents
-npx agentbridge link-skills
-
-# Mirror and synchronize MCP servers across all agent configs
-npx agentbridge sync-mcp
-
-# Verify symlink integrity, schemas, and permissions
-npx agentbridge doctor
+npx agentbridge status        # See what's detected - read-only, changes nothing
+npx agentbridge link-skills   # Merge skills into the hub, link every agent to it
+npx agentbridge sync-mcp      # Merge and mirror MCP servers across agents
+npx agentbridge doctor        # Health check
 ```
 
-Or install globally:
+Or install globally for a shorter command:
 
 ```bash
 npm install -g agentbridge
+agentbridge status
 ```
 
 ---
 
-## CLI Reference
+## Commands
 
-Most commands (`status`, `pick`, `link-skills`, `sync-mcp`'s output target aside, `add-skill`, `doctor`) accept `--hub <path>` to override the default `~/.agentbridge/skills` hub location.
+Most commands accept `--hub <path>` to override the default `~/.agentbridge/skills` hub location.
+
+| # | Command | What it does | Key options |
+|---|---|---|---|
+| 1 | `status` | Overview: detected agents, skill counts, MCP server counts, hub link status | `--json`, `--hub` |
+| 2 | `pick` (alias `import`) | Interactively choose which skills/MCPs to import | `--target`, `--hub` |
+| 3 | `link-skills` | Merge existing skills into the hub, link every agent to it | `--dry-run`, `--no-backup`, `-y`, `--hub` |
+| 4 | `sync-mcp` | Merge & mirror MCP servers across all agent configs | `--output`, `--dry-run`, `-y` |
+| 5 | `sync-rules` | Sync `AGENTS.md` to `CLAUDE.md`/`GEMINI.md`/`.cursorrules`/copilot | `--mode`, `--cwd`, `-y`, `--no-backup` |
+| 6 | `add-skill <name>` | Scaffold a new skill directly in the hub | `--desc`, `--tags`, `--author`, `--hub` |
+| 7 | `doctor` | Health check: broken links, exposed secrets, name collisions | `--fix`, `--hub` |
+| 8 | `unlink` | Disconnect agents from the hub, restore standalone copies | `--no-restore`, `-y` |
+| 9 | `rollback` | List or restore automatic backup snapshots | `--list`, `<snapshot-id>` |
+| 10 | `watch` | Live auto-sync for the skills hub and `AGENTS.md` | `--cwd` |
 
 ### 1. `agentbridge status`
 Scans the system and presents an ASCII table overview of all installed AI coding agents, skills counts, hub linking status, and configured MCP servers.
