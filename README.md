@@ -1,7 +1,7 @@
 # AgentBridge
 
 [![CI](https://github.com/Helter5/agentbridge/actions/workflows/ci.yml/badge.svg)](https://github.com/Helter5/agentbridge/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/agentbridge.svg?style=flat&color=3b82f6)](https://www.npmjs.com/package/agentbridge)
+[![npm version](https://img.shields.io/npm/v/%40helter%2Fagentbridge.svg?style=flat&color=3b82f6)](https://www.npmjs.com/package/@helter/agentbridge)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7+-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green.svg)](https://nodejs.org/)
@@ -85,16 +85,16 @@ An MCP server definition can't work the same way: it's one field inside a much l
 Run directly without installing, using `npx`:
 
 ```bash
-npx agentbridge status        # See what's detected - read-only, changes nothing
-npx agentbridge link-skills   # Merge skills into the hub, link every agent to it
-npx agentbridge sync-mcp      # Merge and mirror MCP servers across agents
-npx agentbridge doctor        # Health check
+npx @helter/agentbridge status        # See what's detected - read-only, changes nothing
+npx @helter/agentbridge link-skills   # Merge skills into the hub, link every agent to it
+npx @helter/agentbridge sync-mcp      # Merge and mirror MCP servers across agents
+npx @helter/agentbridge doctor        # Health check
 ```
 
 Or install globally for a shorter command:
 
 ```bash
-npm install -g agentbridge
+npm install -g @helter/agentbridge
 agentbridge status
 ```
 
@@ -258,7 +258,7 @@ agentbridge watch --cwd ./my-repo   # Watch a specific project root instead of t
 
 ## Programmatic TypeScript SDK
 
-You can import and use `agentbridge` directly in Node.js / TypeScript code:
+You can import and use `@helter/agentbridge` directly in Node.js / TypeScript code:
 
 ```typescript
 import {
@@ -267,7 +267,7 @@ import {
   syncMcpConfigs,
   syncProjectRules,
   runDiagnostics,
-} from 'agentbridge';
+} from '@helter/agentbridge';
 
 // 1. Detect installed agents
 const agents = await detectInstalledAgents();
