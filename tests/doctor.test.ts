@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
-import { runDiagnostics, fixDiagnostics } from '../src/core/doctor.js';
+import { runDiagnostics } from '../src/core/doctor.js';
 import { ensureDir, pathExists } from '../src/utils/fs.js';
 
 describe('Doctor & Health Diagnostics Engine', () => {
@@ -61,9 +61,21 @@ describe('Doctor & Health Diagnostics Engine', () => {
     expect(reservedCheck?.fixable).toBe(true);
     expect(reservedCheck?.details?.[0]).toContain('.system');
 
-    const fixResult = await fixDiagnostics(report);
-    expect(fixResult.fixedCount).toBeGreaterThan(0);
-    expect(fixResult.failedCount).toBe(0);
+    // Deliberately NOT fixDiagnostics(report) here: runDiagnostics()
+    // internally calls the real, un-mocked detectInstalledAgents() (only
+    // hubPath is overridable - there's no equivalent override for an
+    // agent's own skillsDir), so the report can also contain a REAL
+    // "agent skills folder not linked" check for whatever AI agents are
+    // actually installed on the machine running this test. Found the hard
+    // way: fixDiagnostics(report) ran that check's fixAction too, which
+    // created a real junction from the developer's actual ~/.claude/skills
+    // (etc.) to this test's tempHub - later deleted by afterEach(),
+    // leaving a broken link on their real machine. Call only the specific
+    // fixAction this test is about instead of ever fixing a whole report
+    // that came from an unmocked detectInstalledAgents() call.
+    expect(reservedCheck?.fixAction).toBeDefined();
+    const fixed = await reservedCheck!.fixAction!();
+    expect(fixed).toBe(true);
 
     // The reserved folder is gone from the hub...
     expect(await pathExists(path.join(tempHub, '.system'))).toBe(false);
