@@ -72,6 +72,10 @@ flowchart TD
 
 Key safety properties baked into every write path: automatic pre-write backups (`link-skills`, `sync-mcp`, `sync-rules` - see the Commands section below for exactly which mechanism each uses and how to restore), and secrets are never persisted in plain text if an equivalent OS environment variable already exists (see the Secret Redaction note under `sync-mcp`).
 
+**Skills are shared; MCP servers are copied - and that's deliberate, not a shortcut.** A skill is an isolated unit on disk (a folder with `SKILL.md` and nothing else mixed in), so every agent's skills directory can just be a symlink/junction into the same hub folder - genuinely one file, visible under multiple paths. Editing it anywhere changes it everywhere instantly, with no sync step needed (`link-skills` only has to run once, to create the links).
+
+An MCP server definition can't work the same way: it's one field inside a much larger config file that also holds each agent's own unrelated settings (Claude's own preferences, Codex's own settings, etc.) - a symlink only works at the whole-file level, and symlinking the *entire* file would leak one agent's unrelated settings into another's. So `sync-mcp` copies the merged definition into each agent's config separately - a real, independent copy per agent (plus one more in the hub's own `~/.agentbridge/mcp_servers.json` registry, used as a merge source). The tradeoff: MCP servers only stay in sync at the moment you run `sync-mcp` (or an agent gets re-synced by `link-skills`/`doctor --fix`) - edit one agent's server definition by hand and the others won't know until the next sync. `doctor` and `sync-mcp` both detect and warn when two agents have drifted into disagreeing about the same server (see the MCP Server Conflict Detection note under `sync-mcp` in Commands, below) so drift doesn't go unnoticed between syncs.
+
 ---
 
 ## Quick Setup
