@@ -8,7 +8,13 @@ import {
   backupPath,
   ensureDir,
 } from '../utils/fs.js';
-import { validateMCPConfigFile, validateMCPServerConfig, redactEnvRecord } from '../utils/schema.js';
+import {
+  validateMCPConfigFile,
+  validateMCPServerConfig,
+  redactEnvRecord,
+  interpolateEnvString,
+  isEnvPlaceholder,
+} from '../utils/schema.js';
 import { DEFAULT_MASTER_MCP_PATH } from '../constants.js';
 import type { DetectedAgent } from '../types/client.js';
 import type {
@@ -89,9 +95,22 @@ function describeServerConflicts(a: MCPServerConfig, b: MCPServerConfig): string
   const envA = a.env || {};
   const envB = b.env || {};
   for (const key of Object.keys(envA)) {
-    if (key in envB && envA[key] !== envB[key]) {
-      diffs.push(`env.${key}`);
-    }
+    if (!(key in envB)) continue;
+    // Found via real-machine testing: one side can hold `${VAR}` (e.g. the
+    // hub registry, or an agent config already redacted by a previous
+    // sync-mcp) while the other holds the literal value it resolves to
+    // (e.g. an agent config synced before that env var was set, or edited
+    // by hand) - same secret, not a genuine disagreement.
+    const resolvedA = interpolateEnvString(envA[key]);
+    const resolvedB = interpolateEnvString(envB[key]);
+    if (resolvedA === resolvedB) continue;
+    // If either side is STILL a placeholder after interpolation, its env
+    // var isn't currently set, so there's no way to prove the two values
+    // actually differ - it may well be the correct value once the var is
+    // set. Only flag a conflict once both sides are known, comparable
+    // values (never treat "can't verify" the same as "genuinely differs").
+    if (isEnvPlaceholder(resolvedA) || isEnvPlaceholder(resolvedB)) continue;
+    diffs.push(`env.${key}`);
   }
   return diffs;
 }
