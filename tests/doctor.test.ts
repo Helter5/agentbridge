@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'node:path';
 import os from 'node:os';
 import fsp from 'node:fs/promises';
-import { runDiagnostics } from '../src/core/doctor.js';
-import { ensureDir } from '../src/utils/fs.js';
+import { runDiagnostics, fixDiagnostics } from '../src/core/doctor.js';
+import { ensureDir, pathExists } from '../src/utils/fs.js';
 
 describe('Doctor & Health Diagnostics Engine', () => {
   const tempDir = path.join(os.tmpdir(), `agentbridge-doctor-test-${Date.now()}`);
@@ -33,5 +33,41 @@ describe('Doctor & Health Diagnostics Engine', () => {
 
     const symlinkCheck = report.checks.find((c) => c.id === 'symlink-capability');
     expect(symlinkCheck).toBeDefined();
+  });
+
+  it('flags and can clean up a reserved folder (e.g. a leaked .system bundle) that ended up in the hub before the mergeSkillsIntoHub() filter existed', async () => {
+    // Simulates pre-fix contamination: an older agentbridge version copied
+    // an agent's reserved .system folder straight into the hub. The
+    // real, original copy at the agent's own skillsDir is a separate
+    // concern (untouched by this cleanup) - this check is specifically
+    // about the accidental duplicate living inside the shared hub, which
+    // gets cross-linked into every other agent.
+    await ensureDir(path.join(tempHub, '.system', 'imagegen'));
+    await fsp.writeFile(
+      path.join(tempHub, '.system', 'imagegen', 'SKILL.md'),
+      `---\nname: imagegen\ndescription: leaked\n---\n\nBody\n`,
+      'utf-8'
+    );
+    await ensureDir(path.join(tempHub, 'real-skill'));
+    await fsp.writeFile(
+      path.join(tempHub, 'real-skill', 'SKILL.md'),
+      `---\nname: real-skill\ndescription: a real hub skill\n---\n\nBody\n`,
+      'utf-8'
+    );
+
+    const report = await runDiagnostics({ hubPath: tempHub });
+    const reservedCheck = report.checks.find((c) => c.id === 'hub-reserved-folders');
+    expect(reservedCheck?.status).toBe('warning');
+    expect(reservedCheck?.fixable).toBe(true);
+    expect(reservedCheck?.details?.[0]).toContain('.system');
+
+    const fixResult = await fixDiagnostics(report);
+    expect(fixResult.fixedCount).toBeGreaterThan(0);
+    expect(fixResult.failedCount).toBe(0);
+
+    // The reserved folder is gone from the hub...
+    expect(await pathExists(path.join(tempHub, '.system'))).toBe(false);
+    // ...but the real skill that happened to live alongside it wasn't touched.
+    expect(await pathExists(path.join(tempHub, 'real-skill', 'SKILL.md'))).toBe(true);
   });
 });

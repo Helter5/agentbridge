@@ -9,6 +9,7 @@ import {
   ensureDir,
   createCrossPlatformLink,
   safeReadJson,
+  removeLinkOrDir,
 } from '../utils/fs.js';
 import {
   validateMCPConfigFile,
@@ -231,6 +232,39 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
       description: `All ${hubSkills.length} skill(s) passed schema validation`,
       status: 'success',
       fixable: false,
+    });
+  }
+
+  // 5b. Reserved/system folders that leaked into the hub before
+  // mergeSkillsIntoHub() excluded them (e.g. OpenAI Codex's own `.system`
+  // bundle, imported wholesale by an older agentbridge version and then
+  // cross-linked into every other agent via the shared hub). Safe to
+  // remove from the hub specifically - mergeSkillsIntoHub() only ever
+  // copies from an agent's own folder into the hub, never deletes the
+  // source, so the agent's real copy (e.g. ~/.codex/skills/.system) is
+  // untouched either way.
+  const reservedHubEntries = hubSkills.filter(
+    (s) => s.dirName.startsWith('.') || s.dirName === 'node_modules'
+  );
+  if (reservedHubEntries.length > 0) {
+    checks.push({
+      id: 'hub-reserved-folders',
+      category: 'skills',
+      title: 'Reserved Folder Leaked Into Hub',
+      description: `${reservedHubEntries.length} reserved/system folder(s) (e.g. an agent's own internal skills bundle) were imported into the hub and are now shared with every linked agent`,
+      status: 'warning',
+      fixable: true,
+      details: reservedHubEntries.map((s) => s.path),
+      fixAction: async () => {
+        try {
+          for (const entry of reservedHubEntries) {
+            await removeLinkOrDir(entry.path);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      },
     });
   }
 
