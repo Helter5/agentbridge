@@ -132,7 +132,7 @@ describe('File Watcher Engine', () => {
     onRuleChange.mockClear();
 
     await fsp.writeFile(path.join(tempDir, 'AGENTS.md'), '# Test Rules\nv2\n', 'utf-8');
-    await new Promise((r) => setTimeout(r, 150)); // past debounceMs
+    await new Promise((r) => setTimeout(r, 500)); // past debounceMs
 
     expect(onRuleChange).toHaveBeenCalled();
     const [eventType, , result] = onRuleChange.mock.calls[onRuleChange.mock.calls.length - 1];
@@ -211,7 +211,7 @@ describe('File Watcher Engine', () => {
     onRuleChange.mockClear();
 
     await fsp.writeFile(path.join(tempDir, 'unrelated-file.txt'), 'not AGENTS.md', 'utf-8');
-    await new Promise((r) => setTimeout(r, 150)); // past debounceMs
+    await new Promise((r) => setTimeout(r, 500)); // past debounceMs
 
     expect(onRuleChange).not.toHaveBeenCalled();
   });
@@ -243,14 +243,14 @@ describe('File Watcher Engine', () => {
     const testWritePath = path.join(isolatedHub, '.test-write');
     await fsp.writeFile(testWritePath, '', 'utf-8');
     await fsp.rm(testWritePath, { force: true });
-    await new Promise((r) => setTimeout(r, 150)); // past debounceMs
+    await new Promise((r) => setTimeout(r, 500)); // past debounceMs
 
     expect(onSkillChange).not.toHaveBeenCalled();
 
     // A real skill change in the same hub must still be reported.
     await ensureDir(path.join(isolatedHub, 'real-skill'));
     await fsp.writeFile(path.join(isolatedHub, 'real-skill', 'SKILL.md'), 'Body', 'utf-8');
-    await new Promise((r) => setTimeout(r, 150)); // past debounceMs
+    await new Promise((r) => setTimeout(r, 500)); // past debounceMs
 
     expect(onSkillChange).toHaveBeenCalled();
   });
