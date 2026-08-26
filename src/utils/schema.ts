@@ -333,7 +333,7 @@ export function interpolateEnvString(str: string): string {
 /**
  * Checks whether a string is already an env-var placeholder (${VAR} or $VAR)
  */
-function isEnvPlaceholder(value: string): boolean {
+export function isEnvPlaceholder(value: string): boolean {
   return /^\$\{[a-zA-Z0-9_]+\}$|^\$[a-zA-Z0-9_]+$/.test(value);
 }
 

@@ -492,4 +492,90 @@ describe('MCP Synchronizer Engine', () => {
       EXTRA_OPTION: 'codex-only',
     });
   });
+
+  it('does not flag a false collision between a ${VAR} placeholder and the literal value it resolves to (same secret, not a disagreement)', async () => {
+    // Found via real-machine testing: the hub registry (or an agent config
+    // already redacted by a previous sync-mcp) can hold `${VAR}` while
+    // another agent's config still holds the literal value - same secret,
+    // written at different points in time, not a genuine conflict. Three
+    // cases in one test: unresolved (env var unset) must not be flagged
+    // (can't prove a real difference), resolved-and-matching must not be
+    // flagged, resolved-and-different must still be flagged.
+    const envVarName = 'AGENTBRIDGE_TEST_TOKEN_EQUIVALENCE';
+    const originalEnvValue = process.env[envVarName];
+
+    const claudeConfigFile = path.join(tempDir, 'claude-placeholder.json');
+    const codexConfigFile = path.join(tempDir, 'codex-literal.json');
+
+    await safeWriteJson(claudeConfigFile, {
+      mcpServers: {
+        github: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-github'],
+          env: { [envVarName]: `\${${envVarName}}` },
+        },
+      },
+    });
+    await safeWriteJson(codexConfigFile, {
+      mcpServers: {
+        github: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-github'],
+          env: { [envVarName]: 'ghp_someRealLookingToken1234567890' },
+        },
+      },
+    });
+
+    const mockAgents: DetectedAgent[] = [
+      {
+        id: 'claude',
+        name: 'Claude Code',
+        displayName: 'Claude Code',
+        isInstalled: true,
+        paths: { configDir: tempDir, skillsDir: path.join(tempDir, 'skills-eq1'), mcpConfigFile: claudeConfigFile },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+      {
+        id: 'codex',
+        name: 'OpenAI Codex',
+        displayName: 'OpenAI Codex',
+        isInstalled: true,
+        paths: { configDir: tempDir, skillsDir: path.join(tempDir, 'skills-eq2'), mcpConfigFile: codexConfigFile },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+    ];
+
+    try {
+      // Case 1: env var not set - can't verify, must not flag a collision.
+      delete process.env[envVarName];
+      const hub1 = path.join(tempDir, 'eq-hub-1.json');
+      const { collisions: c1 } = await collectMcpServers(mockAgents, { masterHubPath: hub1 });
+      expect(c1).toEqual([]);
+
+      // Case 2: env var set to match the literal - genuinely the same
+      // secret, must not flag a collision.
+      process.env[envVarName] = 'ghp_someRealLookingToken1234567890';
+      const hub2 = path.join(tempDir, 'eq-hub-2.json');
+      const { collisions: c2 } = await collectMcpServers(mockAgents, { masterHubPath: hub2 });
+      expect(c2).toEqual([]);
+
+      // Case 3: env var set to something else entirely - now both sides
+      // resolve to different, known values, so this is a real conflict.
+      process.env[envVarName] = 'ghp_completelyDifferentToken000000';
+      const hub3 = path.join(tempDir, 'eq-hub-3.json');
+      const { collisions: c3 } = await collectMcpServers(mockAgents, { masterHubPath: hub3 });
+      expect(c3.length).toBe(1);
+      expect(c3[0].conflictingFields).toEqual([`env.${envVarName}`]);
+    } finally {
+      if (originalEnvValue === undefined) {
+        delete process.env[envVarName];
+      } else {
+        process.env[envVarName] = originalEnvValue;
+      }
+    }
+  });
 });
