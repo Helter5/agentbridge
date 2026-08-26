@@ -1,7 +1,7 @@
 {
   "name": "agentbridge",
   "version": "1.0.1",
-  "description": "Universal Skill & MCP Sync Engine for AI Coding Agents (Antigravity, Claude Code, Codex, Cursor)",
+  "description": "Universal Skill & MCP Sync Engine for AI Coding Agents (Antigravity, Claude Code, Codex)",
   "type": "module",
   "bin": {
     "agentbridge": "./dist/cli.js"
@@ -26,7 +26,6 @@
     "antigravity",
     "claude-code",
     "codex",
-    "cursor",
     "mcp",
     "model-context-protocol",
     "skills",
