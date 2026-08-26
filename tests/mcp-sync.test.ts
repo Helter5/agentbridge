@@ -368,4 +368,128 @@ describe('MCP Synchronizer Engine', () => {
     const backupContent = await fsp.readFile(path.join(tempDir, backupFile!), 'utf-8');
     expect(backupContent).toBe(originalRaw);
   });
+
+  it('collectMcpServers() reports a collision when two agents independently configure the same server name with genuinely different command/args/env', async () => {
+    // Unlike skills (detectSkillCollisions), this used to be entirely
+    // silent - mergeServerConfig() would just let the later-processed
+    // agent's value win on conflicting fields with no signal to the user
+    // at all.
+    const claudeConfigFile = path.join(tempDir, 'claude-conflict.json');
+    const codexConfigFile = path.join(tempDir, 'codex-conflict.json');
+
+    await safeWriteJson(claudeConfigFile, {
+      mcpServers: {
+        postgres: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://prod-db/app'],
+          env: { DB_PASSWORD: 'claude-side-password' },
+        },
+      },
+    });
+
+    await safeWriteJson(codexConfigFile, {
+      mcpServers: {
+        postgres: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-postgres', 'postgresql://staging-db/app'],
+          env: { DB_PASSWORD: 'codex-side-password' },
+        },
+      },
+    });
+
+    const mockAgents: DetectedAgent[] = [
+      {
+        id: 'claude',
+        name: 'Claude Code',
+        displayName: 'Claude Code',
+        isInstalled: true,
+        paths: { configDir: tempDir, skillsDir: path.join(tempDir, 'skills-c1'), mcpConfigFile: claudeConfigFile },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+      {
+        id: 'codex',
+        name: 'OpenAI Codex',
+        displayName: 'OpenAI Codex',
+        isInstalled: true,
+        paths: { configDir: tempDir, skillsDir: path.join(tempDir, 'skills-c2'), mcpConfigFile: codexConfigFile },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+    ];
+
+    const isolatedHubMcp = path.join(tempDir, 'isolated-conflict-hub.json');
+    const { collisions } = await collectMcpServers(mockAgents, { masterHubPath: isolatedHubMcp });
+
+    expect(collisions.length).toBe(1);
+    expect(collisions[0].serverName).toBe('postgres');
+    expect(collisions[0].conflictingFields.sort()).toEqual(['args', 'env.DB_PASSWORD']);
+    expect(collisions[0].sources).toEqual(['Claude Code', 'OpenAI Codex']);
+  });
+
+  it('collectMcpServers() does not report a collision when agents only contribute complementary (non-overlapping) fields for the same server', async () => {
+    // Same server name, same command/args, and their env keys don't
+    // overlap at all - this is a normal union merge (both survive), not a
+    // conflict. Distinct from the test above, which has both an args
+    // difference and a genuinely conflicting (same-key) env value.
+    const claudeConfigFile = path.join(tempDir, 'claude-nocollide.json');
+    const codexConfigFile = path.join(tempDir, 'codex-nocollide.json');
+
+    await safeWriteJson(claudeConfigFile, {
+      mcpServers: {
+        github: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-github'],
+          env: { GITHUB_TOKEN: 'shared-token' },
+        },
+      },
+    });
+
+    await safeWriteJson(codexConfigFile, {
+      mcpServers: {
+        github: {
+          command: 'npx',
+          args: ['-y', '@modelcontextprotocol/server-github'],
+          env: { GITHUB_TOKEN: 'shared-token', EXTRA_OPTION: 'codex-only' },
+        },
+      },
+    });
+
+    const mockAgents: DetectedAgent[] = [
+      {
+        id: 'claude',
+        name: 'Claude Code',
+        displayName: 'Claude Code',
+        isInstalled: true,
+        paths: { configDir: tempDir, skillsDir: path.join(tempDir, 'skills-n1'), mcpConfigFile: claudeConfigFile },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+      {
+        id: 'codex',
+        name: 'OpenAI Codex',
+        displayName: 'OpenAI Codex',
+        isInstalled: true,
+        paths: { configDir: tempDir, skillsDir: path.join(tempDir, 'skills-n2'), mcpConfigFile: codexConfigFile },
+        existingSkillsCount: 0,
+        existingMcpServersCount: 1,
+        isLinkedToHub: false,
+      },
+    ];
+
+    const isolatedHubMcp = path.join(tempDir, 'isolated-nocollide-hub.json');
+    const { collisions, mergedServers } = await collectMcpServers(mockAgents, {
+      masterHubPath: isolatedHubMcp,
+    });
+
+    expect(collisions).toEqual([]);
+    // Both env keys survived the merge.
+    expect(mergedServers.github.env).toEqual({
+      GITHUB_TOKEN: 'shared-token',
+      EXTRA_OPTION: 'codex-only',
+    });
+  });
 });

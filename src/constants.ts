@@ -26,6 +26,7 @@ export const AUTO_GENERATED_HEADER = `<!-- Auto-synchronized by AgentBridge from
 export const RULE_TARGET_FILES: Record<RuleTargetType, string> = {
   claude: 'CLAUDE.md',
   gemini: 'GEMINI.md',
+  codex: 'CODEX.md',
   cursor: '.cursorrules',
   copilot: '.github/copilot-instructions.md',
 };
@@ -36,6 +37,7 @@ export const RULE_SOURCE_CANDIDATES = [
   'agents.md',
   'CLAUDE.md',
   'GEMINI.md',
+  'CODEX.md',
   '.cursorrules',
 ];
 

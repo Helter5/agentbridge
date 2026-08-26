@@ -20,6 +20,20 @@ export interface MCPServerEntry {
   sourceAgents: string[];
 }
 
+/**
+ * Two agents independently configured a server with the same name, but
+ * their definitions genuinely disagree on one or more fields (not just
+ * "one has an extra env var the other doesn't") - the later-merged side
+ * silently wins on those fields. Unlike SkillCollision (skill-linker.ts),
+ * this doesn't block anything; it's purely a signal for the caller to
+ * surface to the user.
+ */
+export interface MCPServerCollision {
+  serverName: string;
+  conflictingFields: string[];
+  sources: string[];
+}
+
 export interface MCPSyncResult {
   agentId: string;
   filePath: string;
@@ -44,4 +58,5 @@ export interface MCPSyncSummary {
   serverSources: Record<string, string[]>;
   results: MCPSyncResult[];
   invalidConfigs: { agentId: string; agentName: string; filePath: string }[];
+  collisions: MCPServerCollision[];
 }

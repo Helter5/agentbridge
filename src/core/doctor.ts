@@ -411,6 +411,38 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
     });
   }
 
+  // 7b. MCP Server Conflict Detection - parity with the skill-collision
+  // check above. Unlike skills, sync-mcp used to merge same-named servers
+  // from different agents with no warning at all when their definitions
+  // genuinely disagreed (command/args/a shared env key) - the later agent
+  // silently won on those fields. Report-only like the secrets warning
+  // above: there's no single correct "fix" to apply automatically, only
+  // the user knows which agent's definition should actually win.
+  const { collectMcpServers } = await import('./mcp-sync.js');
+  const { collisions: mcpCollisions } = await collectMcpServers(installedAgents);
+  if (mcpCollisions.length > 0) {
+    checks.push({
+      id: 'mcp-server-collisions',
+      category: 'mcp',
+      title: 'MCP Server Conflicts',
+      description: `${mcpCollisions.length} MCP server(s) are independently configured differently across agents`,
+      status: 'warning',
+      fixable: false,
+      details: mcpCollisions.map(
+        (c) => `${c.serverName}: ${c.conflictingFields.join(', ')} differ across ${c.sources.join(', ')} - run 'agentbridge sync-mcp' to see which value wins, or edit the losing agent's config directly`
+      ),
+    });
+  } else {
+    checks.push({
+      id: 'mcp-server-collisions',
+      category: 'mcp',
+      title: 'MCP Server Conflict Check',
+      description: 'Zero same-named MCP servers with conflicting definitions detected across active agents',
+      status: 'success',
+      fixable: false,
+    });
+  }
+
   // Summary counts
   const total = checks.length;
   const passed = checks.filter((c) => c.status === 'success').length;

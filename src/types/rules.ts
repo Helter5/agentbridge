@@ -1,6 +1,7 @@
 export type RuleTargetType =
   | 'claude'
   | 'gemini'
+  | 'codex'
   | 'cursor'
   | 'copilot';
 
