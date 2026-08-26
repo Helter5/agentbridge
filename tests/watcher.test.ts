@@ -152,13 +152,22 @@ describe('File Watcher Engine', () => {
     // was restarted. Now watches the project root directory itself,
     // filtered to the AGENTS.md filename, which doesn't require the file
     // to exist yet.
-    await fsp.rm(path.join(tempDir, 'AGENTS.md'), { force: true });
+    //
+    // Uses its own fresh subdirectory, never beforeEach's tempDir (which
+    // already has an AGENTS.md) - deleting that file first to simulate
+    // "doesn't exist yet" turned out to be its own change event on some
+    // platforms (macOS FSEvents fired a 'rename' for the delete), and
+    // syncProjectRules() auto-creates a fresh AGENTS.md when none exists,
+    // so the delete alone was enough to trigger a real (if unintended)
+    // sync before this test's own write ever happened.
+    const freshProjectDir = path.join(tempDir, 'fresh-project-no-agents-md-yet');
+    await ensureDir(freshProjectDir);
 
     const onRuleChange = vi.fn();
     const onRuleSyncError = vi.fn();
 
     const watcher = await startWatcher({
-      projectRoot: tempDir,
+      projectRoot: freshProjectDir,
       debounceMs: 20,
       onRuleChange,
       onRuleSyncError,
@@ -171,11 +180,11 @@ describe('File Watcher Engine', () => {
     expect(onRuleChange).not.toHaveBeenCalled();
     expect(onRuleSyncError).not.toHaveBeenCalled();
 
-    await fsp.writeFile(path.join(tempDir, 'AGENTS.md'), '# Created after watch started\n', 'utf-8');
+    await fsp.writeFile(path.join(freshProjectDir, 'AGENTS.md'), '# Created after watch started\n', 'utf-8');
     await new Promise((r) => setTimeout(r, 200)); // past debounceMs
 
     expect(onRuleChange).toHaveBeenCalled();
-    const claudeMd = await fsp.readFile(path.join(tempDir, 'CLAUDE.md'), 'utf-8');
+    const claudeMd = await fsp.readFile(path.join(freshProjectDir, 'CLAUDE.md'), 'utf-8');
     expect(claudeMd).toContain('Created after watch started');
   });
 
