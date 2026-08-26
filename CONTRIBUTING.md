@@ -32,6 +32,14 @@ src/
 
 ---
 
+## Risk Hotspots
+
+`src/cli.ts` is the CLI-aggregation layer - it wires every core engine (`detector`, `skill-linker`, `mcp-sync`, `rules`, `doctor`, `rollback`) into commands, owns `try`/`catch` boundaries, exit-code decisions, and confirmation prompts. Several real regressions originated here specifically because a command's error handling or exit-code logic diverged from the others (see `CHANGELOG.md` PR#15, #16 for concrete cases). When touching `cli.ts`:
+- Match the existing pattern for the command you're editing (`try`/`catch` around the core call, `process.exitCode = 1` on failure) rather than inventing a new one.
+- If a command mutates state across multiple agents, check how partial failure is reported for the other mutating commands before adding your own.
+
+---
+
 ## Local Development Workflow
 
 ### 1. Prerequisites

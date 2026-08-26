@@ -135,8 +135,11 @@ Migrates existing skills into the central hub (`~/.agentbridge/skills`) without 
 ```bash
 agentbridge link-skills
 agentbridge link-skills --dry-run     # Preview actions without modifying disk
+agentbridge link-skills --no-backup   # Skip the pre-link snapshot backup
 agentbridge link-skills -y            # Skip confirmation prompt
 ```
+
+> **Note (partial failure):** if linking fails partway through more than one agent, the error names which agent actually failed, which agents were already processed before it (their skills may already be merged into the hub), and recommends running `agentbridge doctor` to check the current state before retrying.
 
 ### 4. `agentbridge sync-mcp`
 Safely reads MCP server declarations across all detected client configuration files, deep-merges environment variables, command arguments, and server keys, then mirrors them across all agents.
@@ -174,11 +177,14 @@ agentbridge doctor
 agentbridge doctor --fix     # Automatically repair broken links and missing folders
 ```
 
+> **Note (exit codes):** without `--fix`, any warning or error in the report exits `1` (broken links, exposed secrets, and skill-name collisions are all reported at `warning` severity, so this catches them too) - so `agentbridge doctor && deploy` stops before a real problem. With `--fix`, the exit code reflects the repair pass instead and is `0` once it has run.
+
 ### 8. `agentbridge unlink`
 Safely disconnects agents from the central hub, removing junctions/symlinks and restoring independent directories with copies of hub skills.
 
 ```bash
 agentbridge unlink
+agentbridge unlink --no-restore     # Disconnect without copying hub skills back
 ```
 
 ### 9. `agentbridge rollback`

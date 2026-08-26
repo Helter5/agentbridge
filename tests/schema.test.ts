@@ -149,6 +149,20 @@ Body content that must be preserved.`;
     expect(secretEntropy).toBeGreaterThan(4.5);
   });
 
+  it('flags a real high-entropy token via the entropy check in detectPotentialSecrets (not just a known prefix)', () => {
+    // A random-looking mixed-case alphanumeric string, 30+ chars so it's
+    // picked up whole by the candidate regex (no separators that would
+    // split it into shorter pieces), matching none of the known token
+    // prefixes (ghp_, sk-, AKIA, ...) - this only passes if the entropy
+    // branch (entropy >= 4.5) actually flags it as hasSecret: true.
+    const highEntropyToken = 'xT9mQ2vL7pR4wZ8kN1bY6cF3hJ5gD0aB';
+    expect(calculateShannonEntropy(highEntropyToken)).toBeGreaterThan(4.5);
+
+    const result = detectPotentialSecrets(highEntropyToken);
+    expect(result.hasSecret).toBe(true);
+    expect(result.reason).toMatch(/high-entropy/i);
+  });
+
   it('round-trips ${VAR} through interpolateEnvString and back via redactEnvValue', () => {
     const varName = 'AGENTBRIDGE_SCHEMA_TEST_VAR';
     const original = process.env[varName];
