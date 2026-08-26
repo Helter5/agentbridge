@@ -181,7 +181,12 @@ describe('File Watcher Engine', () => {
     expect(onRuleSyncError).not.toHaveBeenCalled();
 
     await fsp.writeFile(path.join(freshProjectDir, 'AGENTS.md'), '# Created after watch started\n', 'utf-8');
-    await new Promise((r) => setTimeout(r, 200)); // past debounceMs
+    // This one exercises the real (unmocked) syncProjectRules(), which
+    // writes 5 target files with its own file locking - a wider margin
+    // than the other, mocked-sync tests in this file need. Found flaky on
+    // a loaded Windows CI runner at 200ms (during a GitHub Actions
+    // incident, but the margin itself was genuinely tight regardless).
+    await new Promise((r) => setTimeout(r, 500)); // past debounceMs
 
     expect(onRuleChange).toHaveBeenCalled();
     const claudeMd = await fsp.readFile(path.join(freshProjectDir, 'CLAUDE.md'), 'utf-8');
