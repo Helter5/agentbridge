@@ -18,11 +18,11 @@ describe('Client Detector Engine', () => {
     await fsp.rm(tempDir, { recursive: true, force: true });
   });
 
-  it('defines all 4 core AI coding agents in registry', () => {
+  it('defines the 3 core AI coding agents in registry (cursor excluded for now)', () => {
     expect(SUPPORTED_AGENTS.antigravity).toBeDefined();
     expect(SUPPORTED_AGENTS.claude).toBeDefined();
     expect(SUPPORTED_AGENTS.codex).toBeDefined();
-    expect(SUPPORTED_AGENTS.cursor).toBeDefined();
+    expect(Object.keys(SUPPORTED_AGENTS)).toEqual(['antigravity', 'claude', 'codex']);
   });
 
   it('detects agent presence when config files or directories exist', async () => {

@@ -1,8 +1,10 @@
+// 'cursor' deliberately excluded for now - see SUPPORTED_AGENTS
+// (constants.ts). Re-add here first when bringing it back; the Record
+// there won't compile until every id here also has an entry.
 export type AgentId =
   | 'antigravity'
   | 'claude'
-  | 'codex'
-  | 'cursor';
+  | 'codex';
 
 export interface AgentConfigPaths {
   configDir: string;

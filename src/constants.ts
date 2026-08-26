@@ -64,7 +64,10 @@ export function getClaudeDesktopConfigPath(): string {
 }
 
 /**
- * Registry of the 4 supported AI Coding Agents
+ * Registry of supported AI Coding Agents. Cursor is deliberately excluded
+ * for now (see AgentId, types/client.ts) - the type stays absent so
+ * SUPPORTED_AGENTS' Record<AgentId, AgentDefinition> can't silently drift
+ * out of sync with which agents are actually wired up.
  */
 export const SUPPORTED_AGENTS: Record<AgentId, AgentDefinition> = {
   antigravity: {
@@ -112,18 +115,6 @@ export const SUPPORTED_AGENTS: Record<AgentId, AgentDefinition> = {
       settingsFile: '~/.codex/settings.json',
     },
   },
-  cursor: {
-    id: 'cursor',
-    name: 'Cursor',
-    displayName: 'Cursor',
-    homepage: 'https://cursor.com',
-    description: 'AI-first Code Editor & Assistant',
-    defaultPaths: {
-      skillsDir: '~/.cursor/skills',
-      mcpConfigFile: '~/.cursor/mcp.json',
-      globalRulesFile: '~/.cursor/rules',
-      settingsFile: '~/.cursor/settings.json',
-    },
-  },
+  // Cursor deliberately excluded for now - see AgentId (types/client.ts).
 };
 
