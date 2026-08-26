@@ -45,6 +45,11 @@ program
     const hubPath = getHubSkillsPath(options.hub);
     const agents = await detectInstalledAgents({ customHubPath: hubPath, checkAll: true });
     const hubSkills = await listSkillsInDirectory(hubPath);
+    // Only a directory that actually contains a valid SKILL.md counts as a
+    // real skill (matches the per-agent "Local Skills" count) - a broken
+    // partial copy or empty folder still shows up in `skills` below (each
+    // entry carries its own `valid` flag) but shouldn't inflate the total.
+    const validHubSkillsCount = hubSkills.filter((s) => s.isValid).length;
     const { mergedServers } = await collectMcpServers(agents);
 
     if (options.json) {
@@ -52,7 +57,7 @@ program
         JSON.stringify(
           {
             hubPath,
-            hubSkillsCount: hubSkills.length,
+            hubSkillsCount: validHubSkillsCount,
             skills: hubSkills.map((s) => ({
               name: s.name,
               dir: s.dirName,
@@ -81,7 +86,7 @@ program
     console.log(pc.bold('System Overview'));
     console.log(formatStatusLine('Skills Hub', contractHome(hubPath), 'ok'));
     console.log(
-      formatStatusLine('Total Hub Skills', `${hubSkills.length} active`, 'ok')
+      formatStatusLine('Total Hub Skills', `${validHubSkillsCount} active`, 'ok')
     );
     console.log(
       formatStatusLine(

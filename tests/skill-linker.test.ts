@@ -696,6 +696,133 @@ describe('Skill Linking Engine', () => {
     expect(await isSymlinkOrJunction(skillsDir)).toBe(true);
   });
 
+  it('detectSkillCollisions() does not flag a false collision when two agents are both linked to the same hub (the normal post-link-skills state)', async () => {
+    // Found via manual sandbox testing: after a real link-skills run, every
+    // agent's skillsDir is a symlink/junction pointing at the shared hub -
+    // so the exact same underlying skill folder is reachable through two
+    // different agent-side paths (e.g. .claude/skills/foo and
+    // .codex/skills/foo both resolve to .agentbridge/skills/foo). The old
+    // "not pointing to the exact same hub path" check compared
+    // path.resolve() on those two different agent-side strings, which are
+    // never equal even though they're the same file - so doctor reported a
+    // false collision on literally every skill right after the primary
+    // link-skills happy path.
+    await ensureDir(path.join(tempHub, 'shared-skill'));
+    await fsp.writeFile(
+      path.join(tempHub, 'shared-skill', 'SKILL.md'),
+      `---\nname: shared-skill\ndescription: Lives only in the hub\n---\n\nBody\n`,
+      'utf-8'
+    );
+
+    const agentASkillsDir = path.join(tempDir, 'agentA-linked-skills');
+    const agentBSkillsDir = path.join(tempDir, 'agentB-linked-skills');
+    expect((await createCrossPlatformLink(tempHub, agentASkillsDir, 'dir')).success).toBe(true);
+    expect((await createCrossPlatformLink(tempHub, agentBSkillsDir, 'dir')).success).toBe(true);
+
+    const agentA: DetectedAgent = {
+      id: 'claude',
+      name: 'Claude Code',
+      displayName: 'Claude Code',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentASkillsDir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: true,
+    };
+    const agentB: DetectedAgent = {
+      id: 'codex',
+      name: 'OpenAI Codex',
+      displayName: 'OpenAI Codex',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentBSkillsDir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: true,
+    };
+
+    const { detectSkillCollisions } = await import('../src/core/skill-linker.js');
+    const collisions = await detectSkillCollisions([agentA, agentB]);
+    expect(collisions).toEqual([]);
+  });
+
+  it('detectSkillCollisions() still flags a genuine collision: two separate (unlinked) directories with the same skill name', async () => {
+    const agentASkillsDir = path.join(tempDir, 'agentA-standalone-skills');
+    const agentBSkillsDir = path.join(tempDir, 'agentB-standalone-skills');
+    await ensureDir(path.join(agentASkillsDir, 'dup-skill'));
+    await fsp.writeFile(
+      path.join(agentASkillsDir, 'dup-skill', 'SKILL.md'),
+      `---\nname: dup-skill\ndescription: Agent A's own version\n---\n\nA\n`,
+      'utf-8'
+    );
+    await ensureDir(path.join(agentBSkillsDir, 'dup-skill'));
+    await fsp.writeFile(
+      path.join(agentBSkillsDir, 'dup-skill', 'SKILL.md'),
+      `---\nname: dup-skill\ndescription: Agent B's own, different version\n---\n\nB\n`,
+      'utf-8'
+    );
+
+    const agentA: DetectedAgent = {
+      id: 'claude',
+      name: 'Claude Code',
+      displayName: 'Claude Code',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentASkillsDir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+    const agentB: DetectedAgent = {
+      id: 'codex',
+      name: 'OpenAI Codex',
+      displayName: 'OpenAI Codex',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentBSkillsDir },
+      existingSkillsCount: 1,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+
+    const { detectSkillCollisions } = await import('../src/core/skill-linker.js');
+    const collisions = await detectSkillCollisions([agentA, agentB]);
+    expect(collisions.length).toBe(1);
+    expect(collisions[0].skillName).toBe('dup-skill');
+  });
+
+  it('linkAgentsToHub(): totalSkillsInHub only counts folders with a real SKILL.md, not every subdirectory', async () => {
+    // Sibling of the countSkillsInDir fix (per-agent Local Skills count) -
+    // listSkillsInDirectory() itself must keep returning invalid entries too
+    // (doctor's frontmatter-validation check needs to see them to report
+    // them), so the fix has to live at each counting call site instead -
+    // here, the final "(N total skills)" summary linkAgentsToHub() reports
+    // after a real link-skills run.
+    const agentSkillsDir = path.join(tempDir, 'agent-mixed-skills');
+    await ensureDir(path.join(agentSkillsDir, 'real-skill'));
+    await fsp.writeFile(
+      path.join(agentSkillsDir, 'real-skill', 'SKILL.md'),
+      `---\nname: real-skill\ndescription: Has a real SKILL.md\n---\n\nBody\n`,
+      'utf-8'
+    );
+    // No SKILL.md at all - a broken partial copy or stray empty folder.
+    await ensureDir(path.join(agentSkillsDir, 'broken-empty-copy'));
+
+    const mockAgent: DetectedAgent = {
+      id: 'codex',
+      name: 'OpenAI Codex',
+      displayName: 'OpenAI Codex',
+      isInstalled: true,
+      paths: { configDir: tempDir, skillsDir: agentSkillsDir },
+      existingSkillsCount: 2,
+      existingMcpServersCount: 0,
+      isLinkedToHub: false,
+    };
+
+    const summary = await linkAgentsToHub([mockAgent], tempHub);
+
+    const hubSkills = await listSkillsInDirectory(tempHub);
+    expect(hubSkills.length).toBe(2); // both still show up here (doctor needs to see the broken one)...
+    expect(summary.totalSkillsInHub).toBe(1); // ...but only the real one counts as an active skill.
+  });
+
   it('mergeSkillsIntoHub() attaches which agent failed and which were already processed when it throws partway through 3 agents', async () => {
     // Follow-up to PR #20's link-skills try/catch fix: the fix correctly
     // stopped an unhandled exception from silently exiting 0 with a
