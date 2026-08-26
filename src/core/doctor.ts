@@ -190,6 +190,30 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
           return res.success;
         },
       });
+    } else {
+      // Neither a link nor an existing regular folder - the agent is
+      // installed (something else about it, e.g. its config file, matched)
+      // but its skills directory was never created at all. Found via
+      // real-machine testing: this case fell through both branches above
+      // silently, so the report said nothing whatsoever about this agent's
+      // skills folder - inconsistent with "Skills in Central Hub" below,
+      // which does have an explicit message for its own empty case.
+      // createCrossPlatformLink() can create a junction/symlink at a path
+      // where nothing exists yet (it only removes an existing item first
+      // if there is one), so this is fixable the same way as the other
+      // case.
+      checks.push({
+        id: `agent-link-${agent.id}`,
+        category: 'symlinks',
+        title: `${agent.displayName} Skills Folder`,
+        description: `Skills directory does not exist yet: ${skillsDir}`,
+        status: 'info',
+        fixable: true,
+        fixAction: async () => {
+          const res = await createCrossPlatformLink(hubPath, skillsDir, 'dir');
+          return res.success;
+        },
+      });
     }
   }
 
