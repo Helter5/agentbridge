@@ -25,7 +25,7 @@ AgentBridge standardizes configurations across all environments:
 2. **Cross-Platform Zero-Privilege Linking**: Uses POSIX Symlinks on macOS/Linux and NTFS Directory Junctions on Windows (no elevated Administrator privileges required).
 3. **Lossless MCP Server Merging**: Deep-merges environment variables, arguments, and server configs across all client configuration files without clobbering custom agent settings.
 4. **Universal Project Rules**: Automatically consolidates and synchronizes `AGENTS.md` to `CLAUDE.md`, `GEMINI.md`, `.cursorrules`, and `.github/copilot-instructions.md`.
-5. **Transactional Rollbacks**: Automated snapshot backups (restorable via `agentbridge rollback`) before `sync-mcp` operations. `link-skills` additionally creates its own pre-link backup folder (path logged to console) as a separate, non-rollback-tracked safety net. `sync-rules` currently has **no backup step** - see the Known Limitations note under its CLI Reference entry.
+5. **Transactional Rollbacks**: Automated snapshot backups (restorable via `agentbridge rollback`) before `sync-mcp` and `sync-rules` operations. `link-skills` additionally creates its own pre-link backup folder (path logged to console) as a separate, non-rollback-tracked safety net.
 
 ---
 
@@ -75,6 +75,7 @@ flowchart TD
     AGENTS -->|sync| COPILOT[.github/copilot-instructions.md]
 
     Rollback -.snapshot before write.-> MCPSync
+    Rollback -.snapshot before write.-> Rules
 ```
 
 `Doctor` reads across the hub and all 4 agents for diagnostics but writes nothing on its own (`--fix` repairs broken links directly via the same cross-platform link helper `SkillLinker` uses, not by calling into `SkillLinker` itself), so it has no outgoing edges above. `SkillLinker`'s own pre-link backup (see `link-skills` above) is a separate mechanism from `Rollback` - that's why no edge connects them.
@@ -160,11 +161,10 @@ agentbridge sync-rules
 agentbridge sync-rules --mode symlink    # Create symlinks instead of auto-sync copies
 agentbridge sync-rules --cwd ./my-repo
 agentbridge sync-rules -y                # Skip confirmation prompt
+agentbridge sync-rules --no-backup       # Skip snapshotting existing target files before overwriting
 ```
 
 > **Note (`--mode symlink` on Windows):** creating a real file symlink requires Developer Mode or an elevated shell. Without either, AgentBridge transparently falls back to a hardlink, which stays in sync when `AGENTS.md` is edited in place but can go stale if it's replaced outright (e.g. some editors' "atomic save" does a delete + rewrite). The CLI output tells you which one you actually got (`Symlinked to source` vs `Hardlinked to source`) - if you see the latter and need true symlinks, enable Developer Mode or run as admin, then re-run the command.
-
-> **Known limitation (no backup):** in `copy` mode (the default), `sync-rules` overwrites an existing `CLAUDE.md`/`GEMINI.md`/`.cursorrules`/`copilot-instructions.md` with no backup of any kind - not the pre-link folder backup `link-skills` makes, not a `agentbridge rollback`-restorable snapshot either. If a target file has manually-added content that isn't in `AGENTS.md`, back it up yourself before running this command.
 
 ### 6. `agentbridge add-skill <name>`
 Scaffolds a new skill directory in the central hub with a standard `SKILL.md` template containing YAML frontmatter.

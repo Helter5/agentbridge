@@ -483,6 +483,7 @@ program
   .option('-c, --cwd <dir>', 'Project root directory', process.cwd())
   .option('-m, --mode <mode>', 'Sync mode: symlink or copy', 'copy')
   .option('-y, --yes', 'Automatically confirm all prompts')
+  .option('--no-backup', 'Do not snapshot existing target files before overwriting them')
   .action(async (options) => {
     printBanner();
     p.intro(pc.bgCyan(pc.black(' agentbridge sync-rules ')));
@@ -533,6 +534,7 @@ program
     try {
       result = await syncProjectRules(projectRoot, {
         mode: options.mode as 'symlink' | 'copy',
+        backupExisting: options.backup !== false,
       });
     } catch (err: any) {
       s.stop('Rule synchronization failed.');
