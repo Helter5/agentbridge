@@ -342,7 +342,15 @@ export async function runDiagnostics(options: DoctorOptions = {}): Promise<Docto
               description: `Detected plain-text credentials in ${path.basename(mcpFile)}. Consider using environment variable references (\${VAR}).`,
               status: 'warning',
               fixable: false,
-              details: exposedSecrets,
+              details: [
+                ...exposedSecrets,
+                // Report-only, deliberately no --fix here (see README's
+                // "Secret Redaction" section) - setting an OS-level env var
+                // is a real side effect on the user's machine that this
+                // tool shouldn't perform unprompted, and the right variable
+                // name/value is something only the user knows for certain.
+                'How to fix: set the matching name as a real OS environment variable (e.g. Windows: [System.Environment]::SetEnvironmentVariable(\'VAR_NAME\', \'value\', \'User\') · macOS/Linux: add `export VAR_NAME=value` to your shell profile), then run `agentbridge sync-mcp` again - it rewrites any config value matching that variable back to `${VAR_NAME}` automatically. See README > Secret Redaction.',
+              ],
             });
           }
 
