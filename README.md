@@ -127,6 +127,7 @@ Interactively multiselect which skills, commands, or MCP servers to import into 
 
 ```bash
 agentbridge pick
+agentbridge pick --target ./my-skills   # Import into a custom directory instead of the default hub
 ```
 
 ### 3. `agentbridge link-skills`
@@ -158,6 +159,7 @@ Synchronizes project-level agent rules. Reads `AGENTS.md` as the single source-o
 agentbridge sync-rules
 agentbridge sync-rules --mode symlink    # Create symlinks instead of auto-sync copies
 agentbridge sync-rules --cwd ./my-repo
+agentbridge sync-rules -y                # Skip confirmation prompt
 ```
 
 > **Note (`--mode symlink` on Windows):** creating a real file symlink requires Developer Mode or an elevated shell. Without either, AgentBridge transparently falls back to a hardlink, which stays in sync when `AGENTS.md` is edited in place but can go stale if it's replaced outright (e.g. some editors' "atomic save" does a delete + rewrite). The CLI output tells you which one you actually got (`Symlinked to source` vs `Hardlinked to source`) - if you see the latter and need true symlinks, enable Developer Mode or run as admin, then re-run the command.
@@ -166,7 +168,7 @@ agentbridge sync-rules --cwd ./my-repo
 Scaffolds a new skill directory in the central hub with a standard `SKILL.md` template containing YAML frontmatter.
 
 ```bash
-agentbridge add-skill database-migration --desc "Automated PostgreSQL schema migration recipes" --tags db,sql,migrations
+agentbridge add-skill database-migration --desc "Automated PostgreSQL schema migration recipes" --tags db,sql,migrations --author "Your Name"
 ```
 
 ### 7. `agentbridge doctor`
@@ -185,6 +187,7 @@ Safely disconnects agents from the central hub, removing junctions/symlinks and 
 ```bash
 agentbridge unlink
 agentbridge unlink --no-restore     # Disconnect without copying hub skills back
+agentbridge unlink -y               # Skip confirmation prompt
 ```
 
 ### 9. `agentbridge rollback`
@@ -201,6 +204,7 @@ Starts a lightweight live file watcher that monitors the central skills hub and 
 
 ```bash
 agentbridge watch
+agentbridge watch --cwd ./my-repo   # Watch a specific project root instead of the current directory
 ```
 
 ---
