@@ -363,7 +363,7 @@ export async function linkAgentsToHub(
         } else {
           // Regular folder: backup then remove
           if (options.backupExisting !== false) {
-            await backupPath(skillsDir);
+            result.backedUpPath = await backupPath(skillsDir);
           } else {
             await removeLinkOrDir(skillsDir);
           }
@@ -374,8 +374,11 @@ export async function linkAgentsToHub(
       const linkRes = await createCrossPlatformLink(absHub, skillsDir, 'dir');
       if (linkRes.success) {
         result.success = true;
-        result.actionTaken =
-          linkRes.action === 'already_linked' ? 'already_linked' : 'created_link';
+        result.actionTaken = result.backedUpPath
+          ? 'backed_up_and_linked'
+          : linkRes.action === 'already_linked'
+            ? 'already_linked'
+            : 'created_link';
       } else {
         result.success = false;
         result.actionTaken = 'failed';

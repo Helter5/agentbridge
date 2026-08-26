@@ -360,6 +360,9 @@ program
 
     for (const link of summary.linkedAgents) {
       if (link.success) {
+        if (link.backedUpPath) {
+          p.log.success(`Backed up existing skills to ${contractHome(link.backedUpPath)}`);
+        }
         p.log.success(
           `${pc.bold(link.agentName)}: ${link.actionTaken === 'already_linked' ? 'Already linked' : 'Successfully linked'} ${icons.arrow} ${contractHome(link.linkPath)}`
         );

@@ -56,6 +56,15 @@ export interface SkillLinkResult {
   success: boolean;
   actionTaken: 'created_link' | 'already_linked' | 'backed_up_and_linked' | 'failed';
   error?: string;
+  /**
+   * Set when an existing regular folder at linkPath was renamed aside before
+   * linking (options.backupExisting !== false). This is a separate,
+   * simpler mechanism from rollback.ts's createBackupSnapshot() - a sibling
+   * `<dir>.backup-<timestamp>` folder, not one of the JSON-tracked
+   * snapshots `agentbridge rollback` lists/restores - so the CLI must
+   * surface this path itself; it isn't discoverable any other way.
+   */
+  backedUpPath?: string;
 }
 
 export interface SkillSyncSummary {

@@ -132,6 +132,77 @@ describe('CLI Integration Tests', () => {
     }
   });
 
+  it('link-skills reports the exact path it backed up an existing skills folder to, and says nothing with --no-backup', async () => {
+    // Found via manual sandbox testing: link-skills silently renames an
+    // existing regular skills folder aside to `<dir>.backup-<timestamp>`
+    // before linking (the --no-backup flag's protection) - the backup
+    // itself worked, but the CLI never said so, and this backup is a
+    // separate mechanism from rollback.ts's tracked snapshots (`agentbridge
+    // rollback --list` doesn't know about it either). A user recovering
+    // from a bad link had to know to go looking for it themselves.
+    const fakeHome = path.join(os.tmpdir(), `agentbridge-cli-backup-msg-test-${Date.now()}`);
+    const env = {
+      ...process.env,
+      HOME: fakeHome,
+      USERPROFILE: fakeHome,
+      APPDATA: path.join(fakeHome, 'AppData', 'Roaming'),
+    };
+    const skillsDir = path.join(fakeHome, '.claude', 'skills');
+
+    try {
+      fs.mkdirSync(path.join(skillsDir, 'demo-skill'), { recursive: true });
+      fs.writeFileSync(
+        path.join(skillsDir, 'demo-skill', 'SKILL.md'),
+        '---\nname: demo-skill\ndescription: demo\n---\n\nBody\n',
+        'utf-8'
+      );
+
+      const { stdout } = await execFileAsync('node', [cliPath, 'link-skills', '--yes'], { env });
+      expect(stdout).toContain('Backed up existing skills to');
+
+      const match = stdout.match(/Backed up existing skills to (.+skills\.backup-[^\s]+)/);
+      expect(match).not.toBeNull();
+      const reportedPath = match![1].trim();
+      // The path is printed via contractHome() (a leading ~ instead of the
+      // full home dir), same as every other path in the CLI's output - so
+      // resolve it back against fakeHome rather than using it verbatim.
+      const actualBackupDir = path.join(fakeHome, '.claude', path.basename(reportedPath));
+      // The path the CLI printed must be the real, existing backup - not
+      // just plausible-looking text.
+      expect(fs.existsSync(actualBackupDir)).toBe(true);
+      expect(fs.existsSync(path.join(actualBackupDir, 'demo-skill', 'SKILL.md'))).toBe(true);
+    } finally {
+      fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+
+    // --no-backup: nothing was renamed aside, so nothing should be reported.
+    const fakeHome2 = path.join(os.tmpdir(), `agentbridge-cli-nobackup-msg-test-${Date.now()}`);
+    const env2 = {
+      ...process.env,
+      HOME: fakeHome2,
+      USERPROFILE: fakeHome2,
+      APPDATA: path.join(fakeHome2, 'AppData', 'Roaming'),
+    };
+    const skillsDir2 = path.join(fakeHome2, '.claude', 'skills');
+    try {
+      fs.mkdirSync(path.join(skillsDir2, 'demo-skill'), { recursive: true });
+      fs.writeFileSync(
+        path.join(skillsDir2, 'demo-skill', 'SKILL.md'),
+        '---\nname: demo-skill\ndescription: demo\n---\n\nBody\n',
+        'utf-8'
+      );
+
+      const { stdout } = await execFileAsync(
+        'node',
+        [cliPath, 'link-skills', '--yes', '--no-backup'],
+        { env: env2 }
+      );
+      expect(stdout).not.toContain('Backed up existing skills to');
+    } finally {
+      fs.rmSync(fakeHome2, { recursive: true, force: true });
+    }
+  });
+
   it('sync-rules with a nonexistent --cwd errors instead of silently creating a whole new project directory tree', async () => {
     // Found via manual testing: --cwd pointing at a path that doesn't exist
     // didn't error at all - it silently created the entire directory
