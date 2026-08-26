@@ -50,6 +50,7 @@
     "@clack/prompts": "^0.9.1",
     "commander": "^13.1.0",
     "picocolors": "^1.1.1",
+    "smol-toml": "^1.8.0",
     "yaml": "^2.7.0",
     "zod": "^3.24.2"
   },
